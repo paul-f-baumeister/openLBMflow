@@ -1,0 +1,10 @@
+LBMflow
+a.out
+a.out.dSYM/*
+*.o
+*.d
+*/*.vti
+*/*.pvd
+*.c
+test_*.cxx
+.DS_Store
