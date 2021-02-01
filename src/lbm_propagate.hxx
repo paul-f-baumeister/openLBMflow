@@ -167,7 +167,7 @@ namespace lbm_propagate {
               f[input    ][index] = value;
               if (echo > 21) {
                   std::printf("# D%dQ%d propagate: init(xyz=%i, q=%i)= f[%i]= %i\n",
-                                D, Q, xyz, q, index, value);
+                                 D, Q, xyz, q, index, value);
               } // echo
           } // q
       } // xyz

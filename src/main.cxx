@@ -203,61 +203,61 @@ void update(
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
                     // load
-                    double const f000 = fp[ipop(xyz, q_ooo)];
-                    double const fp00 = fp[ipop(xyz, q_poo)];
-                    double const fpp0 = fp[ipop(xyz, q_ppo)];
-                    double const f0p0 = fp[ipop(xyz, q_opo)];
-                    double const fmp0 = fp[ipop(xyz, q_npo)];
-                    double const fm00 = fp[ipop(xyz, q_noo)];
-                    double const fmm0 = fp[ipop(xyz, q_nno)];
-                    double const f0m0 = fp[ipop(xyz, q_ono)];
-                    double const fpm0 = fp[ipop(xyz, q_pno)];
-                    double const f0pp = fp[ipop(xyz, q_opp)];
-                    double const f00p = fp[ipop(xyz, q_oop)];
-                    double const f0mp = fp[ipop(xyz, q_onp)];
-                    double const f0mm = fp[ipop(xyz, q_onn)];
-                    double const f00m = fp[ipop(xyz, q_oon)];
-                    double const f0pm = fp[ipop(xyz, q_opn)];
-                    double const fp0p = fp[ipop(xyz, q_pop)];
-                    double const fm0p = fp[ipop(xyz, q_nop)];
-                    double const fm0m = fp[ipop(xyz, q_non)];
-                    double const fp0m = fp[ipop(xyz, q_pon)];
+                    double const f_ooo = fp[ipop(xyz, q_ooo)];
+                    double const f_poo = fp[ipop(xyz, q_poo)];
+                    double const f_ppo = fp[ipop(xyz, q_ppo)];
+                    double const f_opo = fp[ipop(xyz, q_opo)];
+                    double const f_npo = fp[ipop(xyz, q_npo)];
+                    double const f_noo = fp[ipop(xyz, q_noo)];
+                    double const f_nno = fp[ipop(xyz, q_nno)];
+                    double const f_ono = fp[ipop(xyz, q_ono)];
+                    double const f_pno = fp[ipop(xyz, q_pno)];
+                    double const f_opp = fp[ipop(xyz, q_opp)];
+                    double const f_oop = fp[ipop(xyz, q_oop)];
+                    double const f_onp = fp[ipop(xyz, q_onp)];
+                    double const f_onn = fp[ipop(xyz, q_onn)];
+                    double const f_oon = fp[ipop(xyz, q_oon)];
+                    double const f_opn = fp[ipop(xyz, q_opn)];
+                    double const f_pop = fp[ipop(xyz, q_pop)];
+                    double const f_nop = fp[ipop(xyz, q_nop)];
+                    double const f_non = fp[ipop(xyz, q_non)];
+                    double const f_pon = fp[ipop(xyz, q_pon)];
 
                     // calculate rho and ux, uy, uz
-                    double const tmp_rho = f000 
-                                    + (fp00 + fm00) 
-                                    + (f0p0 + f0m0) 
-                                    + (f00p + f00m)
+                    double const tnp_rho = f_ooo 
+                                    + (f_poo + f_noo) 
+                                    + (f_opo + f_ono) 
+                                    + (f_oop + f_oon)
                                     
-                                    + (f0pp + f0mm)
-                                    + (f0mp + f0pm)
-                                    + (fp0p + fm0m)
-                                    + (fm0p + fp0m)
-                                    + (fpp0 + fmm0)
-                                    + (fmp0 + fpm0);
+                                    + (f_opp + f_onn)
+                                    + (f_onp + f_opn)
+                                    + (f_pop + f_non)
+                                    + (f_nop + f_pon)
+                                    + (f_ppo + f_nno)
+                                    + (f_npo + f_pno);
                                 
                     double const inv_rho = 1.0/tmp_rho;
                     
-                    // x-current        p      m
-                    double tmp_ux = ( (fp00 - fm00) 
-                                    + (fpp0 - fmm0) 
-                                    + (fpm0 - fmp0)
-                                    + (fp0p - fm0m)
-                                    + (fp0m - fm0p) )*inv_rho;
+                    // x-current        p      n
+                    double tmp_ux = ( (f_poo - f_noo) 
+                                    + (f_ppo - f_nno) 
+                                    + (f_pno - f_npo)
+                                    + (f_pop - f_non)
+                                    + (f_pon - f_nop) )*inv_rho;
 
-                    // y-current         p      m
-                    double tmp_uy = ( (f0p0 - f0m0) 
-                                    + (fpp0 - fmm0) 
-                                    + (fmp0 - fpm0)
-                                    + (f0pp - f0mm)
-                                    + (f0pm - f0mp) )*inv_rho;
+                    // y-current         p      n
+                    double tmp_uy = ( (f_opo - f_ono) 
+                                    + (f_ppo - f_nno) 
+                                    + (f_npo - f_pno)
+                                    + (f_opp - f_onn)
+                                    + (f_opn - f_onp) )*inv_rho;
 
-                    // z-current          p      m
-                    double tmp_uz = ( (f00p - f00m) 
-                                    + (fp0p - fm0m) 
-                                    + (fm0p - fp0m)
-                                    + (f0pp - f0mm)
-                                    + (f0mp - f0pm) )*inv_rho;
+                    // z-current          p      n
+                    double tmp_uz = ( (f_oop - f_oon) 
+                                    + (f_pop - f_non) 
+                                    + (f_nop - f_pon)
+                                    + (f_opp - f_onn)
+                                    + (f_onp - f_opn) )*inv_rho;
  
                     // add the body force
                     tmp_ux += tau*body_force_xyz[0];
@@ -308,25 +308,25 @@ void update(
                     double const tmp_uz = uz[xyz] - tau*(G*tmp_phi*grad_phi_z)*inv_rho;
 
                     // load again
-                    double const f000 = fp[ipop(xyz, q_ooo)];
-                    double const fp00 = fp[ipop(xyz, q_poo)];
-                    double const fpp0 = fp[ipop(xyz, q_ppo)];
-                    double const f0p0 = fp[ipop(xyz, q_opo)];
-                    double const fmp0 = fp[ipop(xyz, q_npo)];
-                    double const fm00 = fp[ipop(xyz, q_noo)];
-                    double const fmm0 = fp[ipop(xyz, q_nno)];
-                    double const f0m0 = fp[ipop(xyz, q_ono)];
-                    double const fpm0 = fp[ipop(xyz, q_pno)];
-                    double const f0pp = fp[ipop(xyz, q_opp)];
-                    double const f00p = fp[ipop(xyz, q_oop)];
-                    double const f0mp = fp[ipop(xyz, q_onp)];
-                    double const f0mm = fp[ipop(xyz, q_onn)];
-                    double const f00m = fp[ipop(xyz, q_oon)];
-                    double const f0pm = fp[ipop(xyz, q_opn)];
-                    double const fp0p = fp[ipop(xyz, q_pop)];
-                    double const fm0p = fp[ipop(xyz, q_nop)];
-                    double const fm0m = fp[ipop(xyz, q_non)];
-                    double const fp0m = fp[ipop(xyz, q_pon)];
+                    double const f_ooo = fp[ipop(xyz, q_ooo)];
+                    double const f_poo = fp[ipop(xyz, q_poo)];
+                    double const f_ppo = fp[ipop(xyz, q_ppo)];
+                    double const f_opo = fp[ipop(xyz, q_opo)];
+                    double const f_npo = fp[ipop(xyz, q_npo)];
+                    double const f_noo = fp[ipop(xyz, q_noo)];
+                    double const f_nno = fp[ipop(xyz, q_nno)];
+                    double const f_ono = fp[ipop(xyz, q_ono)];
+                    double const f_pno = fp[ipop(xyz, q_pno)];
+                    double const f_opp = fp[ipop(xyz, q_opp)];
+                    double const f_oop = fp[ipop(xyz, q_oop)];
+                    double const f_onp = fp[ipop(xyz, q_onp)];
+                    double const f_onn = fp[ipop(xyz, q_onn)];
+                    double const f_oon = fp[ipop(xyz, q_oon)];
+                    double const f_opn = fp[ipop(xyz, q_opn)];
+                    double const f_pop = fp[ipop(xyz, q_pop)];
+                    double const f_nop = fp[ipop(xyz, q_nop)];
+                    double const f_non = fp[ipop(xyz, q_non)];
+                    double const f_pon = fp[ipop(xyz, q_pon)];
 
 // ----------------------------------------------------// multi-phase //---------------------------------------end
 #endif // MultiPhase
@@ -345,18 +345,16 @@ void update(
                     
                     auto const tmp_rho_inv_tau = tmp_rho*inv_tau;
                     auto const w0 = half_wi0*tmp_rho_inv_tau;
-//                  auto const fn000 = f000*min_tau + equilibrium(w0, 0., uxyz2);
-                    auto const fn000 = f000*min_tau + w0*(2 - 3*uxyz2);
-                    tmp_fn[q_ooo] = fn000;
+                    tmp_fn[q_ooo] = f_ooo*min_tau + w0*(2 - 3*uxyz2);
 
                     auto const w1 = half_wi1*tmp_rho_inv_tau;
-                    tmp_fn[q_poo] = fp00*min_tau + w1*(2 + 6*tmp_ux + 9*ux2 - 3*uxyz2);
-                    tmp_fn[q_noo] = fm00*min_tau + w1*(2 - 6*tmp_ux + 9*ux2 - 3*uxyz2);
-                    tmp_fn[q_opo] = f0p0*min_tau + w1*(2 + 6*tmp_uy + 9*uy2 - 3*uxyz2);
-                    tmp_fn[q_ono] = f0m0*min_tau + w1*(2 - 6*tmp_uy + 9*uy2 - 3*uxyz2);
-                    tmp_fn[q_oop] = f00p*min_tau + w1*(2 + 6*tmp_uz + 9*uz2 - 3*uxyz2);
-                    tmp_fn[q_oon] = f00m*min_tau + w1*(2 - 6*tmp_uz + 9*uz2 - 3*uxyz2);
-                            
+                    tmp_fn[q_poo] = f_poo*min_tau + w1*(2 + 6*tmp_ux + 9*ux2 - 3*uxyz2);
+                    tmp_fn[q_noo] = f_noo*min_tau + w1*(2 - 6*tmp_ux + 9*ux2 - 3*uxyz2);
+                    tmp_fn[q_opo] = f_opo*min_tau + w1*(2 + 6*tmp_uy + 9*uy2 - 3*uxyz2);
+                    tmp_fn[q_ono] = f_ono*min_tau + w1*(2 - 6*tmp_uy + 9*uy2 - 3*uxyz2);
+                    tmp_fn[q_oop] = f_oop*min_tau + w1*(2 + 6*tmp_uz + 9*uz2 - 3*uxyz2);
+                    tmp_fn[q_oon] = f_oon*min_tau + w1*(2 - 6*tmp_uz + 9*uz2 - 3*uxyz2);
+
                     auto const uxy2 = ux2 + uy2;
                     auto const uyz2 = uy2 + uz2;
                     auto const uzx2 = uz2 + ux2;
@@ -365,20 +363,20 @@ void update(
                     auto const uzx = 2*tmp_uz*tmp_ux;
                             
                     auto const w2 = half_wi2*tmp_rho_inv_tau;
-                    tmp_fn[q_ppo] = fpp0*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
-                    tmp_fn[q_npo] = fmp0*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
-                    tmp_fn[q_nno] = fmm0*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
-                    tmp_fn[q_pno] = fpm0*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
+                    tmp_fn[q_ppo] = f_ppo*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
+                    tmp_fn[q_npo] = f_npo*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
+                    tmp_fn[q_nno] = f_nno*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
+                    tmp_fn[q_pno] = f_pno*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
 
-                    tmp_fn[q_opp] = f0pp*min_tau + w2*(2 + 6*(+tmp_uy + tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
-                    tmp_fn[q_onp] = f0mp*min_tau + w2*(2 + 6*(-tmp_uy + tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
-                    tmp_fn[q_onn] = f0mm*min_tau + w2*(2 + 6*(-tmp_uy - tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
-                    tmp_fn[q_opn] = f0pm*min_tau + w2*(2 + 6*(+tmp_uy - tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
+                    tmp_fn[q_opp] = f_opp*min_tau + w2*(2 + 6*(+tmp_uy + tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
+                    tmp_fn[q_onp] = f_onp*min_tau + w2*(2 + 6*(-tmp_uy + tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
+                    tmp_fn[q_onn] = f_onn*min_tau + w2*(2 + 6*(-tmp_uy - tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
+                    tmp_fn[q_opn] = f_opn*min_tau + w2*(2 + 6*(+tmp_uy - tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
                     
-                    tmp_fn[q_pop] = fp0p*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
-                    tmp_fn[q_nop] = fm0p*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
-                    tmp_fn[q_non] = fm0m*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
-                    tmp_fn[q_pon] = fp0m*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
+                    tmp_fn[q_pop] = f_pop*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
+                    tmp_fn[q_nop] = f_nop*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
+                    tmp_fn[q_non] = f_non*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
+                    tmp_fn[q_pon] = f_pon*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
 
                     // the loops for collide and propate are merged, otherwise we would need to store tmp_fn back into fp
                     propagate(x, y, z, tmp_fn, fn); // writes into fn, also propagates into solid boundary cells

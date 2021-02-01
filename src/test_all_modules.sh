@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-for module in lbm_stencil lbm_propagate lbm_geometry lbm_domain global_coordinates data_view
+for module in lbm_stencil lbm_propagate lbm_geometry lbm_domain global_coordinates data_view lbm_collide
 do
     echo ""
     echo " ==== test module $module ===="

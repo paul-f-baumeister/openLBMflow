@@ -72,7 +72,7 @@ public:
 
 public:
 
-    BKG_stencil() { // default constructor
+    BKG_stencil(int const echo=3) { // default constructor
 
         // setup of quadrature weights
         for(int v2 = 0; v2 < 4; ++v2) {
