@@ -18,7 +18,7 @@ double ifaceW = 3.0;        //interface width
 double G = -6.0;            //interparticular interaction potential (G=0 for singlephase)
 double body_force = 2.0e-5; //gravity force
 double body_force_dir = 0;  //gravity direction (0=down 90=right 180=top 270=left)
-int time_total = 2000;      //total time step
+int time_total = 200;       //total time step
 int time_save = 50;         //save result to VTK image file (*.vti can be open in Paraview)
 int save_rho = 1;           //save density  in output file (0=don't save, 1=save)
 int save_pre = 1;           //save pressure in output file (0=don't save, 1=save)

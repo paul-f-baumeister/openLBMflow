@@ -1,0 +1,9 @@
+# executable
+openLBMflow
+
+# objects
+*.o
+
+# output from testing the standard example
+output/*.pvd
+output/*.vti
