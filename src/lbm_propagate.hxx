@@ -9,9 +9,8 @@
     template <typename real_t, class Stencil>
     inline int propagate(
 #ifdef  STANDALONE_TEST
-        #define restrict
+        #define         restrict
           real_t       *restrict const fnew  // output
-        #define f_out(x, y, z, q)      fnew[((x*Ny + y)*Nz + z)*Stencil::Q + q]
 #else  // STANDALONE_TEST
           view4D<real_t> & f_out // output --> view4D is an object that can transpose at runtime
 #endif // STANDALONE_TEST
@@ -21,11 +20,12 @@
     ) {
         int number_of_populations{0}; // result (should match Q on exit in STANDALONE_TEST mode)
 #ifdef  STANDALONE_TEST
-        assert(fnew != f_in); // never pass the same pointer (forbidden by restrict keywords)
-        #define count_pop(number) number_of_populations += number
-#else
+        assert(fnew != f_in);          // never pass the same pointer (forbidden by restrict keywords)
+        #define count_pop(number)      number_of_populations += number
+        #define f_out(x, y, z, q)      fnew[((x*Ny + y)*Nz + z)*Stencil::Q + q]
+#else  // STANDALONE_TEST
         #define count_pop(number) // do nothing (and allow the compiler to reorder)
-#endif
+#endif // STANDALONE_TEST
 
         // exploit that we can assume the local domain to be periodic
         int const oz = z;

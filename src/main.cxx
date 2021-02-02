@@ -224,7 +224,7 @@ void update(
                     double const f_pon = fp[ipop(xyz, q_pon)];
 
                     // calculate rho and ux, uy, uz
-                    double const tnp_rho = f_ooo 
+                    double const tmp_rho = f_ooo 
                                     + (f_poo + f_noo) 
                                     + (f_opo + f_ono) 
                                     + (f_oop + f_oon)
