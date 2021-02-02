@@ -334,8 +334,6 @@ public:
 }; // class BKG_stencil
 
 
-typedef int status_t;
-
 namespace lbm_stencil {
 
 #ifdef  NO_UNIT_TESTS

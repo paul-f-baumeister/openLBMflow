@@ -18,7 +18,7 @@ CONTENTS:
 	The openLBMflow is an open source Lattice Boltzman solver.
 	Capable to simulate 2D or 3D, single or multiphase fluid flow.
 	Single phase is a standard BGK lattice boltzman model,
-	and Multiphase is a popular Schan-Chen BGK model.
+	and Multiphase is a popular Shan-Chen BGK model.
 	2D version is implemented on D2Q9 lattice and 3D on D3Q19 lattice. 
 
 2. INSTALLATION
@@ -53,7 +53,7 @@ CONTENTS:
 
 4. HOW TO CONFIGURE MODEL
 	The model configuration can be changed in openLBMFlow_conf.c file.
-	Default configuration is 3D Schan-Chen Multiphase model with 2 droplets.
+	Default configuration is 3D Shan-Chen Multiphase model with 2 droplets.
 	The droplets coalesce and due to gravity pointing down the formed droplet
 	is falling down on a solid surface.
 	By tuning the 'rho_boundary' parameter, static contact angle

@@ -89,8 +89,9 @@ void writeVTK(
         std::fprintf(f, "      </DataArray>\n");
     } // pre
     
+    int const nuc = (nullptr != ux) + (nullptr != uy) + (nullptr != uz);
     if (ux || uy || uz) { // write velocity
-        std::fprintf(f, "      <DataArray type=\"Float32\" Name=\"Velocity\" NumberOfComponents=\"3\" format=\"ascii\">\n");
+        std::fprintf(f, "      <DataArray type=\"Float32\" Name=\"Velocity\" NumberOfComponents=\"%d\" format=\"ascii\">\n", nuc);
         for (int z = 0; z < nz; z++) {
             for (int y = 0; y < ny; y++) {
                 for (int x = 0; x < nx; x++) {
