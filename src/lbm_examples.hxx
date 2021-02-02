@@ -76,50 +76,20 @@ namespace lbm_examples {
  #undef MultiPhase
 #endif
 
-//   class Droplet {
-//   public:
-// 
-//       Droplet(
-//             int const x=0, int const y=0, int const z=0
-//           , int const radius=-999
-//           , int const drop=0
-//           , int const echo=0 // increase echo if also the default constructor should print to stdout
-//       )
-//           : drop_(drop)
-//       {
-//           xyzr_[0] = x; xyzr_[1] = y; xyzr_[2] = z; xyzr_[3] = radius;
-//           if (echo > 0) {
-//               std::printf("# %s at %d %d %d with radius %d, drop=%d\n", __func__,
-//                     xyzr_[0], xyzr_[1], xyzr_[2], xyzr_[3], drop_);
-//           } // drop==0 (default constructor should not print)
-//       } // constructor and default constructor
-// 
-//       int const* position() const { return xyzr_; }
-//       int position(int d) const { assert(0 <= d); assert(d < 4); return xyzr_[d]; }
-//       int radius() const { return xyzr_[3]; }
-//       int drop() const { return drop_; }
-// 
-//   private:
-//       // members
-//       int xyzr_[4];
-//       int drop_; // 1:droplet, -1:bubble, 0:not_initialized
-// 
-//   }; // Droplet
-  
-  
+
+
+  #define WARNING(CRITICAL_CONDITION) \
+              if (CRITICAL_CONDITION) { \
+                  std::printf("# Warning:  " #CRITICAL_CONDITION "  critical!\n"); \
+              }
+
   class Problem {
   private:
     static int constexpr DENSITY_LOW = 0,
                          DENSITY_BOUNDARY = 1,
                          DENSITY_HIGH = 2;
   public:
-    
 
-
-#define WARNING(CRITICAL_CONDITION) \
-            if (CRITICAL_CONDITION) { \
-                std::printf("# Warning:  " #CRITICAL_CONDITION "  critical!\n"); \
-            }
     
     template <class Example>
     Problem(
@@ -301,8 +271,8 @@ namespace lbm_examples {
     std::vector<Droplet> droplets_;
     bool      is_multiphase_;
   }; // class Problem
-
-
+  #undef WARNING
+  
 
 #ifdef  NO_UNIT_TESTS
   inline status_t all_tests(int const echo=0) { return STATUS_TEST_NOT_INCLUDED; }
