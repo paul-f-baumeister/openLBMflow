@@ -84,12 +84,7 @@ namespace lbm_examples {
               }
 
   class Problem {
-  private:
-    static int constexpr DENSITY_LOW = 0,
-                         DENSITY_BOUNDARY = 1,
-                         DENSITY_HIGH = 2;
   public:
-
     
       template <class Example>
       Problem(
@@ -139,29 +134,34 @@ namespace lbm_examples {
           nxyz_[0] = example.nx; assert(example.nx > 0); // or better nz here? ToDo
           nxyz_[1] = example.ny; assert(example.ny > 0); //
           nxyz_[2] = example.nz; assert(example.nz > 0); // or better nx here? ToDo
+          nxyz_[3] = 0; // not used
           if (echo > 0) std::printf("# nx= %d ny= %d nz= %d\n", n(0), n(1), n(2));
 
           WARNING(example.tau < 1, "over-relaxation");
           tau_ = example.tau; assert(tau_ > 0);
 
-          WARNING(example.rhoh < example.rhol, "high density lower than low density");
-          WARNING(example.rhol < 0, "low density negative");
-          WARNING(example.rho_boundary < 0, "boundary density negative");
-          rho_low_boundary_high_[DENSITY_HIGH]     = example.rhoh;
-          rho_low_boundary_high_[DENSITY_LOW]      = example.rhol;
-          rho_low_boundary_high_[DENSITY_BOUNDARY] = example.rho_boundary;
-          
+          rho_low_high_[0] = 1; // rho_low
+          rho_low_high_[1] = 1; // rho_high
+          if (example.is_multiphase) {
+              WARNING(example.rhoh < example.rhol, "high density lower than low density");
+              WARNING(example.rhol < 0, "low density negative");
+              WARNING(example.rho_boundary < 0, "boundary density negative");
+              rho_low_high_[0] = example.rhol;
+              rho_low_high_[1] = example.rhoh;
+          } // multiphase
+          rho_solid_ = example.rho_boundary*(example.rhoh - example.rhol) + example.rhol;
+
           WARNING(example.ifaceW <= 0, "negative interface width will turn around the tanh argument");
           assert (example.ifaceW != 0);
           ifaceW_ = example.ifaceW;
-          
-          G_ = 0;
+
+          g_ = 0;
           if (example.is_multiphase) {
-              G_ = example.G;
+              g_ = example.G;
           } else {
-              WARNING(example.G != 0, "interparticular interaction potential nonzero in singlephase");
+              WARNING(example.G != 0, "interparticular interaction potential meaningless in singlephase");
           } // multiphase
-          
+
           // init
           for(int d = 0; d < 3; ++d) {
               wall_speed_[d][0] = 0;
@@ -214,8 +214,9 @@ namespace lbm_examples {
           droplets_.clear();
           if (example.is_multiphase) {
               droplets_.reserve(2);
-              droplets_.push_back(Droplet(example.d1x, example.d1y, example.d1z, example.d1r, example.drop1, echo));
-              droplets_.push_back(Droplet(example.d2x, example.d2y, example.d2z, example.d2r, example.drop2, echo));
+              auto const & ex = example;
+              droplets_.push_back(Droplet(ex.d1x, ex.d1y, ex.d1z, ex.d1r, ex.drop1, ex.rhol, ex.rhoh, echo));
+              droplets_.push_back(Droplet(ex.d2x, ex.d2y, ex.d2z, ex.d2r, ex.drop2, ex.rhol, ex.rhoh, echo));
               is_multiphase_ = true;
           } else {
               is_multiphase_ = false;
@@ -223,7 +224,7 @@ namespace lbm_examples {
 
           if (echo > 0) std::printf("# %sphase\n#\n", is_multiphase_ ? "multi" : "single");
       } // constructor
-      
+
       
       // accessors
 
@@ -234,14 +235,14 @@ namespace lbm_examples {
       template <char dir> int n() const { return nxyz_[(dir | 32) - 'x']; }
       uint32_t const* n() const { return nxyz_; }
 
-      double rho_boundary() const { return rho_low_boundary_high_[DENSITY_BOUNDARY]; } // density of solid walls
-      double rhol()         const { return rho_low_boundary_high_[DENSITY_LOW ]; } // low
-      double rhoh()         const { return rho_low_boundary_high_[DENSITY_HIGH]; } // high
+      double rho_solid() const { return rho_solid_; }
+      double rho_low()   const { return rho_low_high_[0]; }
+      double rho_high()  const { return rho_low_high_[1]; }
 
       size_t n_droplets() const { return droplets_.size(); }
       Droplet const & droplet(int const i) const { assert(0 <= i); assert(i < droplets_.size()); return droplets_[i]; }
       double const* body_force_xyz() const { return body_force_xyz_; }
-      double interparticular_interaction_potential() const { return G_; }
+      double interparticular_interaction_potential() const { return g_; }
       double interface_width() const { return ifaceW_; }
       double relaxation_time_parameter() const { return tau_; }
 
@@ -255,19 +256,20 @@ namespace lbm_examples {
 
   private:
       // members
-      double    rho_low_boundary_high_[3];
+      uint32_t  nxyz_[4]; // lattice size in x,y,z (nxyz[2] should be 1 for 2D code) 
+      double    rho_low_high_[2]; // legacy
+      double    rho_solid_;
       double    tau_;
       double    ifaceW_;
-      double    G_;
+      double    g_;
       double    body_force_xyz_[3];
-      uint32_t  nxyz_[3]; // lattice size in x,y,z (nxyz[2] should be 1 for 2D code) 
       int8_t    boundaries_[3][2]; // 0=periodic, 1=HBB, set half way bounce back
       double    wall_speed_[3][2]; // //speed of e.g. the top wall for lid driven cavity
       int       total_time_steps_;
       int       save_every_time_steps_;
       uint8_t   save_ruuup_[5];
-      std::vector<Droplet> droplets_;
       bool      is_multiphase_;
+      std::vector<Droplet> droplets_;
 
   }; // class Problem
   #undef WARNING
@@ -293,7 +295,7 @@ namespace lbm_examples {
       make_example(singlephase_poiseuille_flow_3D_channel);
       make_example(singlephase_poiseuille_flow_plate);
       make_example(default_example);
-   
+
       #undef make_example
       return 0;
   } // test_example_setups

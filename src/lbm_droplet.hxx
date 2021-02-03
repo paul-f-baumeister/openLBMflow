@@ -14,9 +14,11 @@
             int const x=0, int const y=0, int const z=0
           , int const radius=-999
           , int const drop=0
+          , double const rho_low=0
+          , double const rho_high=1
           , int const echo=0 // increase echo if also the default constructor should print to stdout
       )
-          : drop_(drop)
+          : rho_low_(rho_low), rho_high_(rho_high), drop_(drop)
       {
           xyzr_[0] = x; xyzr_[1] = y; xyzr_[2] = z; xyzr_[3] = radius;
           if (echo > 0) {
@@ -32,20 +34,22 @@
       int drop() const { return drop_; }
 
       template <typename real_t>
-      double density(real_t const x, real_t const y, real_t const z
-          , double const inverse_interface_width // 1/ifaceW
-          , double const rho_high
-          , double const rho_low
-      ) { 
+      double density(
+            real_t const x
+          , real_t const y
+          , real_t const z
+          , double const inverse_interface_width=1 // 1/ifaceW
+      ) {
           auto const p = position();
           double const dist2 = pow2(x - p[0]) + pow2(y - p[1]) + pow2(z - p[2]);
           auto const dist = std::sqrt(dist2);
           auto const arg = 2*(dist - radius())*inverse_interface_width;
-          return 0.5*((rho_high + rho_low) - drop()*(rho_high - rho_low)*std::tanh(arg));
+          return 0.5*((rho_high_ + rho_low_) - drop_*(rho_high_ - rho_low_)*std::tanh(arg));
       } // density
       
   private:
       // members
+      double rho_low_, rho_high_;
       int xyzr_[4];
       int drop_; // 1:droplet, -1:bubble, 0:not_initialized
 

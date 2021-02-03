@@ -35,6 +35,7 @@ endif
 FEAFLAGS += -D DEVEL
 
 OPTFLAGS = -O0
+# OPTFLAGS = -O2
 OPTFLAGS += -g -pedantic -Wall -Wno-format-security -Wno-format
 
 
