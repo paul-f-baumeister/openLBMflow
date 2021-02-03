@@ -38,8 +38,17 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 #include "lbm_stencil.hxx" // BKG_stencil<D,Q>, qooo, q..., pow2
 #include "lbm_cell.hxx" // CellInfo
 
+// === begin global variables
+
 // include file with initial parameters
 #include "openLBMFlow_conf.c"
+
+int constexpr D = 3, Q = 19;
+BKG_stencil<D,Q> const stencil;
+
+int Nx, Ny, Nz, NxNyNz; // local lattice sizes, NxNyNz >= Nx*Ny*Nz
+
+// === end global variables
 
 #ifndef Lattice3D
     #error "only 3D version available"
@@ -50,14 +59,9 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 #define wall_clock(noarg) ((double) clock()/((double) CLOCKS_PER_SEC))
 
 
-int constexpr D = 3, Q = 19;
-BKG_stencil<D,Q> const stencil;
-
-int Nx, Ny, Nz, NxNyNz; // local lattice sizes, NxNyNz >= Nx*Ny*Nz
-
 inline index_t indexyz(int const x, int const y, int const z) { return (x*Ny + y)*Nz + z; }
 inline index_t phindex(int const x, int const y, int const z) { return ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1); } // enlarged with a halo of thickness 1
-int constexpr Q_aligned = Q + 1;
+int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
 inline index_t ipop(index_t const xyz, int const q) {
     return xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
 //     return q*NxNyNz + xyz; // activate for SoA (structure of arrays) data layout
@@ -65,26 +69,29 @@ inline index_t ipop(index_t const xyz, int const q) {
 
 #ifdef MultiPhase
 template <typename real_t>
-void transfer_phi_halos(real_t *restrict const phi) {
+void transfer_phi_halos(
+      real_t *restrict const phi
+//  , Nx, Ny, Nz                  from global variables
+) {
 
     int const Np[] = {Nx, Ny, Nz};
     // ============================================================================================
-    // these operations may not be reordered or performed at the same time!
+    // these operations may not be reordered or performed in parallel!
     // ============================================================================================
     for (int dir = 0; dir < 3; ++dir) { // ordering dir=0, dir=1, dir=2 may not be changed!
         int const dis = (2 - dir) >> 1; // slow index of the one of the two perpendicular directions
         int const dif = 2 - (dir >> 1); // fast index of the one of the two perpendicular directions
-        int const os = (dir + 1) >> 1; // slow offset that ensure to copy and send only meaningful data
-        int const of = dir >> 1;       // fast offset that ensure to copy and send only meaningful data
+        int const os = (dir + 1) >> 1;  // slow offset that ensure to copy and send only meaningful data
+        int const of = dir >> 1;        // fast offset that ensure to copy and send only meaningful data
         int const Nr = Np[dir], Ns = Np[dis], Nf = Np[dif];
         int iup[3], idn[3], upi[3], dni[3];
 
         { // serial and periodic
             // fill halo-cells with periodic values
                     dni[dir] = Nr; upi[dir] = -1; idn[dir] =  0; iup[dir] = Nr - 1;
-            for (int si = -os; si < Ns+os; ++si) {      
+            for (int si = -os; si < Ns + os; ++si) {      
                     dni[dis] = si; upi[dis] = si; idn[dis] = si; iup[dis] = si; // slow index
-                for (int fi = -of; fi < Nf+of; ++fi) { 
+                for (int fi = -of; fi < Nf + of; ++fi) { 
                     dni[dif] = fi; upi[dif] = fi; idn[dif] = fi; iup[dif] = fi; // fast index
 
                     phi[phindex(dni[0], dni[1], dni[2])] = phi[phindex(idn[0], idn[1], idn[2])];
@@ -105,13 +112,17 @@ inline void solid_cell_treatment(
     , double const *restrict const rho // rho[nxyz]
     , real_t const *restrict const fn  // fn[nxyz*Q] or fn[Q*nxyz]
     , real_t       *restrict const tmp_fn // inout: tmp_fn[Q]
+//  , Q, stencil, top_wall_speed, bot_wall_speed           from global variables
 ) {
 
     for (int q = 0; q < Q; ++q) {
         tmp_fn[q] = fn[ipop(xyz, stencil.opposite(q))]; // reflection
     } // q
 
+
     if (0 != top_wall_speed) { // moving top wall (y=Ny-1, speed in x-direction)
+//      singlephase_couette_flow:      top_wall_speed == 0.5
+//      singlephase_lid_driven_cavity: top_wall_speed == 0.5
         tmp_fn[q_nno] -= top_wall_speed*(rho[xyz]/6.);
         tmp_fn[q_pno] += top_wall_speed/(rho[xyz]*6.);
     } // top wall speed
@@ -129,6 +140,7 @@ inline void propagate(
       int const x, int const y, int const z
     , real_t const *restrict const tmp_fn // input vector[Q]
     , real_t       *restrict const fn     // output
+//  , Nx, Ny, Nz                            from global variables
 ) {
     // exploit that we can assume the local domain to be periodic
     int const px = (x >= Nx - 1) ? 0 : x + 1;
@@ -188,6 +200,9 @@ void update(
     , double       *restrict const uy // output macroscopic velocities
     , double       *restrict const uz
     , double       *restrict const phi // output phase field in the case of multiphase flow
+//  , Nx, Ny, Nz                            from global variables
+//  , stencil                               from global variables
+
 ) {
     // relaxation time constant tau
     double const inv_tau = 1.0/tau;
@@ -270,21 +285,21 @@ void update(
                     uy[xyz] = tmp_uy; // store macroscopic velocities
                     uz[xyz] = tmp_uz; //
                 } // solid
-                phi[phindex(x, y, z)] = 1.0 - std::exp(-rho[xyz]); // calculate interparticular force in multiphase Shan-Chen model
+                phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); // calculate interparticular force in multiphase Shan-Chen model
             } // z
         } // y
     } // x
 
     transfer_phi_halos(phi); // make the halo-enlarged array periodic
-    
-    double const inv_w2 = 1/36.0, inv_w1 = 2/36.0;
-    
+
+    double const inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
+
     for (int x = 0; x < Nx; x++) {
         for (int y = 0; y < Ny; y++) {
             for (int z = 0; z < Nz; z++) {
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
-                    
+
                     double const tmp_rho = rho[xyz]; // load density
                     double const inv_rho = 1/tmp_rho;
           #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
@@ -419,6 +434,7 @@ void initialize_boundary(
     , real_t *restrict const ux
     , real_t *restrict const uy
     , real_t *restrict const uz
+//  , Nx, Ny, Nz                            from global variables
 ) {
 
     // initialize type of cells
@@ -482,6 +498,7 @@ void initialize_density(
       double *restrict const rho // result
     , char const *restrict const solid
     , double const value
+//  , Nx*Ny*Nz             from global variables
 ) {
     for (index_t xyz = 0; xyz < Nx*Ny*Nz; ++xyz) {
         if (!solid[xyz]) rho[xyz] = value;
@@ -497,6 +514,7 @@ void initialize_distrFunc(
     , double *restrict const uy
     , double *restrict const uz
     , double body_force_xyz[3]
+//  , Nx*Ny*Nz             from global variables
 ) {
 
     // set body_force vector (global variable body_force_xyz)
@@ -544,6 +562,7 @@ void initialize_droplet(
     , double     *restrict const rho // in/output density
     , double const rho_high
     , double const rho_low=0
+//  , Nx, Ny, Nz                            from global variables
 ) {
     auto const rho_diff = (rho_high - rho_low)*drop;
     auto const rho_sum  =  rho_high + rho_low;
@@ -572,8 +591,10 @@ double outputSave(
     , double const phi[]
     , int const ranks[3]
     , int const myrank
+//  , Nx, Ny, Nz                            from global variables
+//  , nx, ny, nz                            from global variables
 ) {
-    static double timer_start, step_start = 0;
+    static double timer_start, step_start{0};
 
     double time_stop = wall_clock(); // stop internal timer
 
@@ -614,22 +635,33 @@ double outputSave(
     if (is_master) {
 #ifndef SuppressIO
         lbm_visualization::writeVTK(time, nx, ny, nz, "output", "openLBMflow", 
-                 rho_all, pre_all, vel_all[0], vel_all[1], vel_all[2]);
+                        rho_all, pre_all, vel_all[0], vel_all[1], vel_all[2]);
 #else
-        std::printf("SuppressIO for writeVTK\n");
-#endif    
+        std::printf("# SuppressIO for writeVTK\n");
+#endif
     } // is_master
 
-    if (save_rho) delete[] rho_all;
-    if (save_pre) delete[] pre_all;
-    for(int d = 0; d < D*save_vel; ++d) delete[] vel_all[d];
+    if (rho_all) delete[] rho_all;
+    if (pre_all) delete[] pre_all;
+    for(int d = 0; d < D*save_vel; ++d) {
+        if (vel_all[d]) delete[] vel_all[d];
+    } // d
 
     timer_start = wall_clock(); // start internal timer again
     return Speed;
 } // outputSave
 
 template <typename real_t> // floating point type of populations
-double run(int const myrank=0) {
+double run(
+    int const myrank=0
+//  , Nx, Ny, Nz                            from global variables (write)
+//  , NxNyNz                                from global variables (write)
+//  , nx, ny, nz                            from global variables (read-only)
+//  , boundary_*                            from global variables (read-only)
+//  , D, Q, Q_aligned                       from global variables (read-only)
+//  , rhoh, rhol, rho_boundary, drop...     from global variables (read-only)
+//  , total_time, time_save                 from global variables (read-only)
+) {
     assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
 
     Nx = nx; Ny = ny; Nz = nz; // local lattice sizes equal to global
@@ -646,12 +678,15 @@ double run(int const myrank=0) {
 #endif
                            ) * nx*ny*nz;
     printf("LBM  needs %.6f GiByte total for D%dQ%d with (%d x %d x %d) cells.\n", 
-                     t_mem/1073741824.,      D, Q,        nx,  ny,  nz);
+                t_mem/double(1ull << 30),    D, Q,        nx,  ny,  nz);
 
+    // cell info
     auto const solid = get_memory<char>  (NxNyNz); // one Byte per cell
+    // populations (two copies)
     auto const f0    = get_memory<real_t>(NxNyNz*Q_aligned);
     auto const f1    = get_memory<real_t>(NxNyNz*Q_aligned);
 
+    // observables
     // ToDo: group together into a view2D<double> that can be switched between SoA[4][NxNyNz_aligned] and AoS[NxNyNz][4];
     auto const rho   = get_memory<double>(NxNyNz_aligned, 0.0);
     auto const ux    = get_memory<double>(NxNyNz_aligned);
@@ -663,9 +698,9 @@ double run(int const myrank=0) {
     double* const phi = nullptr;
 #endif
 
-    int const boundary[3][2] = {{boundary_lef, boundary_rig},
-                                {boundary_bot, boundary_top},
-                                {boundary_fro, boundary_bac}};
+    int const boundary[3][2] = { {boundary_lef, boundary_rig},
+                                 {boundary_bot, boundary_top},
+                                 {boundary_fro, boundary_bac} };
     initialize_boundary(boundary, rho_boundary, solid, rho, ux, uy, uz);
 
     initialize_density(rho, solid, rhol); // low density value
@@ -678,23 +713,23 @@ double run(int const myrank=0) {
     initialize_distrFunc(f0, solid, rho, ux, uy, uz, body_force_xyz);
 
     double speed_stats[] = {0, 0, 0};
-    
+
 #ifdef TIME_TOTAL
-    #define time_total TIME_TOTAL  // control the maximum number of iterations at compile time
+    #define time_total TIME_TOTAL  // control the maximum number of time steps at compile time using -DTIME_TOTAL
 #endif
 
 #ifdef TIME_SAVE
-    #define time_save  TIME_SAVE   // control the .vti-file output frequency at compile time
+    #define time_save  TIME_SAVE   // control the .vti-file output frequency at compile time using -DTIME_SAVE
 #endif
 
-    assert(time_save%2 == 0); // if the check point interval is an odd number, we cannot combine two time steps
+    assert(0 == time_save % 2); // if the check point interval is an odd number, we cannot combine two time steps
 
-    int const offs[] = {0, 0, 0}; // offsets for parallelization
-    
+    int const ranks[] = {0, 0, 0}; // 3D ranks for parallelization
+
     // main iteration loop
     for (int t = 0; t <= time_total; t+=2) {
         if (0 == t % time_save) {
-            auto const speed = outputSave(t, rho, ux, uy, uz, phi, offs, myrank); // save output to VTK image file
+            auto const speed = outputSave(t, rho, ux, uy, uz, phi, ranks, myrank); // save output to VTK image file
             if (speed > 0) {
                 speed_stats[0] += 1;
                 speed_stats[1] += speed;
@@ -727,12 +762,22 @@ double run(int const myrank=0) {
     delete[] uy;
     delete[] uz;
     if (phi) delete[] phi;
-    
+
     return speed_stats[1];
 } // run
 
 int main(int argc, char *argv[]) {
+
     printf("openLBMflow v2.0.0 (c) 2010 www.lbmflow.com\n");
+
+#ifdef _GIT_KEY
+    // stringify the value of a macro, two expansion levels needed
+    #define macro2string(a) stringify(a)
+    #define stringify(b) #b
+    std::printf("# %s git checkout " macro2string(_GIT_KEY) "\n\n", argc ? argv[0] : "");
+    #undef  stringify
+    #undef  macro2string
+#endif // _GIT_KEY
 
     run<double>();
 //     run<float>();
