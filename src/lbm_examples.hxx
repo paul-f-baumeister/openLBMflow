@@ -20,47 +20,47 @@ namespace lbm_examples {
   };
 
   struct multiphase_coalescence {
-      #include "../examples/multiphase coalescence/openLBMFlow_conf.c"
+      #include "../examples/multiphase_coalescence/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = true;
   };
 
   struct multiphase_coalescence_impact {
-      #include "../examples/multiphase coalescence impact/openLBMFlow_conf.c"
+      #include "../examples/multiphase_coalescence_impact/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = true;
   };
 
   struct multiphase_drop_impact {
-      #include "../examples/multiphase drop impact/openLBMFlow_conf.c"
+      #include "../examples/multiphase_drop_impact/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = true;
   };
 
   struct multiphase_drop_on_drop_impact {
-      #include "../examples/multiphase drop on drop impact/openLBMFlow_conf.c"
+      #include "../examples/multiphase_drop_on_drop_impact/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = true;
   };
 
   struct multiphase_rising_bubble {
-      #include "../examples/multiphase rising bubble/openLBMFlow_conf.c"
+      #include "../examples/multiphase_rising_bubble/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = true;
   };
 
   struct singlephase_couette_flow {
-      #include "../examples/singlephase couette flow/openLBMFlow_conf.c"
+      #include "../examples/singlephase_couette_flow/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = false;
   };
 
   struct singlephase_lid_driven_cavity {
-      #include "../examples/singlephase lid driven cavity/openLBMFlow_conf.c"
+      #include "../examples/singlephase_lid_driven_cavity/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = false;
   };
 
   struct singlephase_poiseuille_flow_3D_channel {
-      #include "../examples/singlephase poiseuille flow 3D channel/openLBMFlow_conf.c"
+      #include "../examples/singlephase_poiseuille_flow_3D_channel/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = false;
   };
 
   struct singlephase_poiseuille_flow_plate {
-      #include "../examples/singlephase poiseuille flow plate/openLBMFlow_conf.c"
+      #include "../examples/singlephase_poiseuille_flow_plate/openLBMFlow_conf.c"
       static bool constexpr is_multiphase = false;
   };
 

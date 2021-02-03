@@ -1,3 +1,4 @@
 # output
-output/*.pvd
-output/*.vti
+*/output/*.pvd
+*/output/*.vti
+*/reference

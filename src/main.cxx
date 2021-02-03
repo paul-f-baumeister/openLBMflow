@@ -612,8 +612,12 @@ double outputSave(
     } // x
 
     if (is_master) {
-        writeVTK(time, nx, ny, nz, "output", "openLBMflow", 
+#ifndef SuppressIO
+        lbm_visualization::writeVTK(time, nx, ny, nz, "output", "openLBMflow", 
                  rho_all, pre_all, vel_all[0], vel_all[1], vel_all[2]);
+#else
+        std::printf("SuppressIO for writeVTK\n");
+#endif    
     } // is_master
 
     if (save_rho) delete[] rho_all;
@@ -624,17 +628,14 @@ double outputSave(
     return Speed;
 } // outputSave
 
-int main(int argc, char *argv[]) {
+template <typename real_t> // floating point type of populations
+double run(int const myrank=0) {
+    assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
+
     Nx = nx; Ny = ny; Nz = nz; // local lattice sizes equal to global
     NxNyNz = Nx*Ny*Nz; // here is some potential for memory alignment, but watch out for loop limits
-    int const myrank = 0;
-
-    printf("openLBMflow v2.0.0 (c) 2010 www.lbmflow.com\n");
-
-    double body_force_xyz[3];
-
-//  typedef float  real_t; // type of mover populations
-    typedef double real_t; // type of mover populations
+    auto const NxNyNz_aligned = (((NxNyNz - 1) >> 2) + 1) << 2;
+    assert(NxNyNz_aligned >= NxNyNz);
 
     // allocate memory
     size_t const t_mem = (  sizeof(char)  *1 
@@ -650,10 +651,12 @@ int main(int argc, char *argv[]) {
     auto const solid = get_memory<char>  (NxNyNz); // one Byte per cell
     auto const f0    = get_memory<real_t>(NxNyNz*Q_aligned);
     auto const f1    = get_memory<real_t>(NxNyNz*Q_aligned);
-    auto const rho   = get_memory<double>(NxNyNz, 0.0);
-    auto const ux    = get_memory<double>(NxNyNz);
-    auto const uy    = get_memory<double>(NxNyNz);
-    auto const uz    = get_memory<double>(NxNyNz);
+
+    // ToDo: group together into a view2D<double> that can be switched between SoA[4][NxNyNz_aligned] and AoS[NxNyNz][4];
+    auto const rho   = get_memory<double>(NxNyNz_aligned, 0.0);
+    auto const ux    = get_memory<double>(NxNyNz_aligned);
+    auto const uy    = get_memory<double>(NxNyNz_aligned);
+    auto const uz    = get_memory<double>(NxNyNz_aligned);
 #ifdef MultiPhase
     auto const phi = get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)); // this array has halo-borders and needs to be indexed using phindex(x,y,z)
 #else
@@ -671,6 +674,7 @@ int main(int argc, char *argv[]) {
     if (d2r > 0) initialize_droplet(d2x, d2y, d2z, d2r, drop2, solid, rho, rhoh, rhol);  // droplet 2
     // extend:   initialize_droplet(d3x, d3y, d3z, d3r, drop3, solid, rho, rhoh, rhol);  // droplet 3
 
+    double body_force_xyz[3];
     initialize_distrFunc(f0, solid, rho, ux, uy, uz, body_force_xyz);
 
     double speed_stats[] = {0, 0, 0};
@@ -685,10 +689,11 @@ int main(int argc, char *argv[]) {
 
     assert(time_save%2 == 0); // if the check point interval is an odd number, we cannot combine two time steps
 
+    int const offs[] = {0, 0, 0}; // offsets for parallelization
+    
     // main iteration loop
     for (int t = 0; t <= time_total; t+=2) {
-        if (0 == t%time_save) {
-            int const offs[] = {0, 0, 0};
+        if (0 == t % time_save) {
             auto const speed = outputSave(t, rho, ux, uy, uz, phi, offs, myrank); // save output to VTK image file
             if (speed > 0) {
                 speed_stats[0] += 1;
@@ -702,10 +707,12 @@ int main(int argc, char *argv[]) {
         update(solid, body_force_xyz, f1, f0, rho, ux, uy, uz, phi);
     } // t
 
-    write_collection_pvd(nx, ny, nz, "openLBMflow", "output", time_total, time_save);
+#ifndef SuppressIO
+    lbm_visualization::write_collection_pvd(nx, ny, nz, "openLBMflow", "output", time_total, time_save);
+#endif    
 
     // compute mean and deviation    
-    auto const denom = ((speed_stats[0] > 0)?1.0/speed_stats[0]:1.0); // inverse denominator
+    auto const denom = ((speed_stats[0] > 0) ? 1/speed_stats[0] : 1.); // inverse denominator
     speed_stats[1] *= denom;
     speed_stats[2] *= denom; speed_stats[2] -= speed_stats[1]*speed_stats[1]; speed_stats[2] = std::abs(speed_stats[2]);
     speed_stats[2] *= ((speed_stats[0] > 1)?speed_stats[0]/(speed_stats[0] - 1.0):1.0); // Gaussian variance
@@ -720,5 +727,15 @@ int main(int argc, char *argv[]) {
     delete[] uy;
     delete[] uz;
     if (phi) delete[] phi;
+    
+    return speed_stats[1];
+} // run
 
+int main(int argc, char *argv[]) {
+    printf("openLBMflow v2.0.0 (c) 2010 www.lbmflow.com\n");
+
+    run<double>();
+//     run<float>();
+
+    return 0;
 } // main
