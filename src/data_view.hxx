@@ -41,7 +41,7 @@ namespace data_view {
       if (LowerBoundCheck) {
           if (index < 0) {
               std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %li < 0)\n\n",
-                                                Rank, at, rank, index);
+                                                Rank, at, rank, int64_t(index));
           }
           assert(0 <= index);
       } // LowerBoundCheck
@@ -49,7 +49,7 @@ namespace data_view {
           if (number > RangeUnknown) {
               if (index >= number) {
                   std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %li >= %ld)\n\n", 
-                                                    Rank, at, rank, index, number);
+                                                    Rank, at, rank, int64_t(index), int64_t(number));
               }
               assert(index < number);
           } // RangeUnknown
@@ -58,12 +58,13 @@ namespace data_view {
 
 } // namespace data_view  
   
-template <typename T, typename int_t=int64_t>
+template <typename T, typename int_t=int32_t>
 class view1D {
   // the data view can be transposed at no cost as we include only the two strides
   // we have to check if the smaller stride is 1 before we use it in dgemm
 public:
   static int constexpr Rank = 1;
+  typedef T value_type;
 
   view1D() : _data(nullptr), _s0(0), _mem(0) {
 #ifdef  UpperBoundsCheck
@@ -162,7 +163,7 @@ private:
   int_t _s0;
   size_t _mem; // only > 0 if memory owner
 #ifdef  UpperBoundsCheck
-  int64_t _n0;
+  int_t _n0;
 #endif // UpperBoundsCheck
 
 }; // view1D
@@ -185,12 +186,13 @@ private:
 #define debug_printf(...) printf(__VA_ARGS__)
 // #define debug_printf(...)
 
-template <typename T, typename int_t=int64_t>
+template <typename T, typename int_t=int32_t>
 class view2D {
   // the data view can be transposed at no cost as we include only the two strides
   // we have to check if the smaller stride is 1 before we use it in dgemm
 public:
   static int constexpr Rank = 2;
+  typedef T value_type;
 
   view2D() : _data(nullptr), _s0(0), _s1(0), _mem(0) {
 #ifdef  UpperBoundsCheck
@@ -303,17 +305,22 @@ public:
       if (new_s0 != _s1 || new_s1 != _s0) {
           debug_printf("# view2D transpose with non-standard permutation %2.2x\n", permutation);
       } // warn
-      return view2D(_data, new_s1, new_s0); // UpperBoundsCheck not possible on transpose
+      view2D t(_data, new_s1, new_s0);
+#ifdef  UpperBoundsCheck
+      if (0x01 == permutation) { t._n[0] = _n[1]; t._n[1] = _n[0]; }
+#endif // UpperBoundsCheck
+      return t; // UpperBoundsCheck not possible on transpose
   } // transpose
 
+#ifdef  UpperBoundsCheck
+  int_t _n[Rank]; // public!
+#endif // UpperBoundsCheck
+  
 private:
   // private data members
   T * _data;
   int_t _s0, _s1;
   size_t _mem; // only > 0 if memory owner
-#ifdef  UpperBoundsCheck
-  int64_t _n[Rank];
-#endif // UpperBoundsCheck
 
 }; // view2D
 
@@ -368,10 +375,11 @@ private:
 #define debug_printf(...) printf(__VA_ARGS__)
 // #define debug_printf(...)
 
-template <typename T, typename int_t=int64_t>
+template <typename T, typename int_t=int32_t>
 class view3D {
 public:
   static int constexpr Rank = 3;
+  typedef T value_type;
 
   view3D() : _data(nullptr), _s0(0), _s1(0), _s2(0), _mem(0) { 
 #ifdef  UpperBoundsCheck
@@ -493,7 +501,7 @@ public:
       int_t const strides[Rank] = {_s0, _s1, _s2};  // extend here for higher Rank
       uint8_t rank_count[Rank] = {0, 0, 0};         // extend here for higher Rank
       int_t sp[Rank]; // permuted strides
-//    uint8_t pr[Rank]; // permuted rank
+      uint8_t pr[Rank]; // permuted rank
       bool non_transposed{true};
       auto perm{permutation}; // non-const copy
       for(int r = 0; r < Rank; ++r) {
@@ -503,7 +511,7 @@ public:
           non_transposed &= (permuted_rank == r);
           ++rank_count[permuted_rank];
           auto const permuted_stride = strides[permuted_rank];
-//        pr[r] = permuted_rank;
+          pr[r] = permuted_rank;
           sp[r] = permuted_stride;
       } // r
       if (non_transposed) {
@@ -517,7 +525,11 @@ public:
           debug_printf("# view3D transpose with non-standard permutation %3.3x\n", permutation);
       } // warn
 
-      return view3D(_data, sp[2], sp[1], sp[0]);    // extend here for higher Rank
+      view3D t(_data, sp[2], sp[1], sp[0]); // extend here for higher Rank
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { t._n[r] = _n[pr[r]]; }
+#endif // UpperBoundsCheck
+      return t;
   } // transpose
 
 private:
@@ -529,7 +541,7 @@ private:
   int_t _s0, _s1, _s2;
   size_t _mem; // only > 0 if memory owner
 #ifdef  UpperBoundsCheck
-  int64_t _n[Rank];
+  int_t _n[Rank];
 #endif // UpperBoundsCheck
 
 }; // view3D
@@ -548,10 +560,11 @@ private:
 #define debug_printf(...) printf(__VA_ARGS__)
 // #define debug_printf(...)
 
-template <typename T, typename int_t=int64_t>
+template <typename T, typename int_t=int32_t>
 class view4D {
 public:
   static int constexpr Rank = 4;
+  typedef T value_type;
 
   view4D() : _data(nullptr), _s0(0), _s1(0), _s2(0), _s3(0), _mem(0) { 
 #ifdef  UpperBoundsCheck
@@ -720,7 +733,7 @@ private:
   int_t _s0, _s1, _s2, _s3;
   size_t _mem; // only > 0 if memory owner
 #ifdef  UpperBoundsCheck
-  int64_t _n[Rank];
+  int_t _n[Rank];
 #endif // UpperBoundsCheck
 
 }; // view4D

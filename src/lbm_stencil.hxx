@@ -321,6 +321,7 @@ private:
     double weight_v2_[4]; // = {wi0, wi1, wi2, wi3}; // weights as a function of velocity^2
 
 public:
+    uint8_t const* opposite() const { return opposite_; }
     int opposite(int const q) const { assert(0 <= q); assert(q < Q); return opposite_[q]; }
     double weight(int const v2) const { assert(0 <= v2); assert(v2 < 4); return weight_v2_[v2]; }
     int8_t const* velocity(int const q) const { assert(0 <= q); assert(q < Q); return velocity_[q]; }
