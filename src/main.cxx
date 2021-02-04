@@ -48,7 +48,7 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 int constexpr D = 3, Q = 19;
 BKG_stencil<D,Q> const stencil;
 
-int Nx, Ny, Nz, NxNyNz; // local lattice sizes, NxNyNz >= Nx*Ny*Nz
+// int Nx, Ny, Nz; //, NxNyNz; // local lattice sizes, NxNyNz >= Nx*Ny*Nz
 
 // === end global variables
 
@@ -61,9 +61,8 @@ int Nx, Ny, Nz, NxNyNz; // local lattice sizes, NxNyNz >= Nx*Ny*Nz
 #define wall_clock(noarg) ((double) clock()/((double) CLOCKS_PER_SEC))
 
 
-inline index_t indexyz(int const x, int const y, int const z) { return (x*Ny + y)*Nz + z; }
 // inline index_t phindex(int const x, int const y, int const z) { return ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1); } // enlarged with a halo of thickness 1
-int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
+// int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
 
 #if 0
 inline index_t ipop(index_t const xyz, int const q) {
@@ -144,6 +143,7 @@ inline void solid_cell_treatment(
 
 } // solid_cell_treatment
 
+inline index_t indexyz(int const x, int const y, int const z, int const Nx, int const Ny, int const Nz) { return (x*Ny + y)*Nz + z; }
 
 // propagate-kernel (performance critical code section)
 template <typename real_t>
@@ -169,25 +169,25 @@ inline void propagate(
 
     // depending of their velocities, the polulations in tmp_fn[Q] at (x,y,z)
     // are streamed to the other lattice sites
-    fn(indexyz(ox, oy, oz), q_ooo) = tmp_fn[q_ooo]; //
-    fn(indexyz(px, oy, oz), q_poo) = tmp_fn[q_poo]; // +x
-    fn(indexyz(px, py, oz), q_ppo) = tmp_fn[q_ppo]; // +x+y
-    fn(indexyz(ox, py, oz), q_opo) = tmp_fn[q_opo]; //   +y
-    fn(indexyz(nx, py, oz), q_npo) = tmp_fn[q_npo]; // -x+y
-    fn(indexyz(nx, oy, oz), q_noo) = tmp_fn[q_noo]; // -x
-    fn(indexyz(nx, ny, oz), q_nno) = tmp_fn[q_nno]; // -x-y
-    fn(indexyz(ox, ny, oz), q_ono) = tmp_fn[q_ono]; //   -y
-    fn(indexyz(px, ny, oz), q_pno) = tmp_fn[q_pno]; // +x-y
-    fn(indexyz(ox, py, pz), q_opp) = tmp_fn[q_opp]; //   +y+z
-    fn(indexyz(ox, oy, pz), q_oop) = tmp_fn[q_oop]; //     +z
-    fn(indexyz(ox, ny, pz), q_onp) = tmp_fn[q_onp]; //   -y+z
-    fn(indexyz(ox, ny, nz), q_onn) = tmp_fn[q_onn]; //   -y-z
-    fn(indexyz(ox, oy, nz), q_oon) = tmp_fn[q_oon]; //     -z
-    fn(indexyz(ox, py, nz), q_opn) = tmp_fn[q_opn]; //   +y-z
-    fn(indexyz(px, oy, pz), q_pop) = tmp_fn[q_pop]; // +x  +z
-    fn(indexyz(nx, oy, pz), q_nop) = tmp_fn[q_nop]; // -x  +z
-    fn(indexyz(nx, oy, nz), q_non) = tmp_fn[q_non]; // -x  -z
-    fn(indexyz(px, oy, nz), q_pon) = tmp_fn[q_pon]; // +x  -z
+    fn(indexyz(ox, oy, oz, Nx, Ny, Nz), q_ooo) = tmp_fn[q_ooo]; //
+    fn(indexyz(px, oy, oz, Nx, Ny, Nz), q_poo) = tmp_fn[q_poo]; // +x
+    fn(indexyz(px, py, oz, Nx, Ny, Nz), q_ppo) = tmp_fn[q_ppo]; // +x+y
+    fn(indexyz(ox, py, oz, Nx, Ny, Nz), q_opo) = tmp_fn[q_opo]; //   +y
+    fn(indexyz(nx, py, oz, Nx, Ny, Nz), q_npo) = tmp_fn[q_npo]; // -x+y
+    fn(indexyz(nx, oy, oz, Nx, Ny, Nz), q_noo) = tmp_fn[q_noo]; // -x
+    fn(indexyz(nx, ny, oz, Nx, Ny, Nz), q_nno) = tmp_fn[q_nno]; // -x-y
+    fn(indexyz(ox, ny, oz, Nx, Ny, Nz), q_ono) = tmp_fn[q_ono]; //   -y
+    fn(indexyz(px, ny, oz, Nx, Ny, Nz), q_pno) = tmp_fn[q_pno]; // +x-y
+    fn(indexyz(ox, py, pz, Nx, Ny, Nz), q_opp) = tmp_fn[q_opp]; //   +y+z
+    fn(indexyz(ox, oy, pz, Nx, Ny, Nz), q_oop) = tmp_fn[q_oop]; //     +z
+    fn(indexyz(ox, ny, pz, Nx, Ny, Nz), q_onp) = tmp_fn[q_onp]; //   -y+z
+    fn(indexyz(ox, ny, nz, Nx, Ny, Nz), q_onn) = tmp_fn[q_onn]; //   -y-z
+    fn(indexyz(ox, oy, nz, Nx, Ny, Nz), q_oon) = tmp_fn[q_oon]; //     -z
+    fn(indexyz(ox, py, nz, Nx, Ny, Nz), q_opn) = tmp_fn[q_opn]; //   +y-z
+    fn(indexyz(px, oy, pz, Nx, Ny, Nz), q_pop) = tmp_fn[q_pop]; // +x  +z
+    fn(indexyz(nx, oy, pz, Nx, Ny, Nz), q_nop) = tmp_fn[q_nop]; // -x  +z
+    fn(indexyz(nx, oy, nz, Nx, Ny, Nz), q_non) = tmp_fn[q_non]; // -x  -z
+    fn(indexyz(px, oy, nz, Nx, Ny, Nz), q_pon) = tmp_fn[q_pon]; // +x  -z
 
 } // propagate
 
@@ -210,14 +210,14 @@ void update(
     , double       *restrict const uz
     , view2D<real_t> const & f_previous // input previous populations fp(xyz, q)
     , BKG_stencil<3,19> const & stencil
+    , double const tau
     , int const Nx, int const Ny, int const Nz
     , char   const *restrict const solid
     , double const *restrict const body_force_xyz
     , double const top_wall_speed
     , double const bot_wall_speed
     , double       *restrict const phi=nullptr // output phase field in the case of multiphase flow
-//     , real_t const *restrict const fp //  input populations
-//     , real_t       *restrict const fn // output populations
+    , double const G=0 // interparticular interaction potential
 ) {
     // relaxation time constant tau
     double const inv_tau = 1.0/tau;
@@ -230,7 +230,7 @@ void update(
     for (int x = 0; x < Nx; ++x) {
         for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
-                index_t const xyz = indexyz(x, y, z);
+                index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
                     // load
                     auto const fp = f_previous[xyz]; // get a 1D subview
@@ -314,7 +314,7 @@ void update(
     for (int x = 0; x < Nx; ++x) {
         for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
-                index_t const xyz = indexyz(x, y, z);
+                index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
 
                     double const tmp_rho = rho[xyz]; // load density
@@ -422,7 +422,7 @@ void update(
     for (int x = 0 ; x < Nx; ++x) {
         for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
-                index_t const xyz = indexyz(x, y, z);
+                index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
                     // invoke propagate here, if propagate is separated from collide: copy fp into tmp_fp and call propagate(x, y, z, tmp_fp, fn)
                 } else {
@@ -468,7 +468,7 @@ void initialize_boundary(
             if (boundary[dir][lu] > 0) {
                 for (int y = 0; y < Ny; ++y) {
                     for (int z = 0; z < Nz; ++z) {
-                        index_t const xyz = indexyz(lu*(Nx - 1), y, z); // node on left/right boundary, x==min/max
+                        index_t const xyz = indexyz(lu*(Nx - 1), y, z, Nx, Ny, Nz); // node on left/right boundary, x==min/max
                         solid[xyz] = 3 + lu;
                         rho[xyz] = rho_solid;
                     } // z
@@ -480,7 +480,7 @@ void initialize_boundary(
             if (boundary[dir][lu] > 0) {
                 for (int x = 0; x < Nx; ++x) {
                     for (int z = 0; z < Nz; ++z) {
-                        index_t const xyz = indexyz(x, lu*(Ny - 1), z); // node on bottom/top boundary, y==min/max
+                        index_t const xyz = indexyz(x, lu*(Ny - 1), z, Nx, Ny, Nz); // node on bottom/top boundary, y==min/max
                         solid[xyz] = 1 + lu;
                         rho[xyz] = rho_solid;
                         // specialty of the y-direction:
@@ -498,7 +498,7 @@ void initialize_boundary(
             if (boundary[dir][lu] > 0) {
                 for (int x = 0; x < Nx; ++x) {
                     for (int y = 0; y < Ny; ++y) {
-                        index_t const xyz = indexyz(x, y, lu*(Nz - 1)); // node on front/back boundary, z==min/max
+                        index_t const xyz = indexyz(x, y, lu*(Nz - 1), Nx, Ny, Nz); // node on front/back boundary, z==min/max
                         solid[xyz] = 5 + lu;
                         rho[xyz] = rho_solid;
                     } // y
@@ -514,23 +514,17 @@ void initialize_density(
       double *restrict const rho // result
     , char const *restrict const solid
     , double const value
-//  , Nx*Ny*Nz             from global variables
+    , int const NxNyNz
 ) {
-    for (index_t xyz = 0; xyz < Nx*Ny*Nz; ++xyz) {
+    for (index_t xyz = 0; xyz < NxNyNz; ++xyz) {
         if (!solid[xyz]) rho[xyz] = value;
     } // xyz
 } // initialize_density
 
-template <typename real_t>
-void initialize_distrFunc(
-      view2D<real_t> & populations // result: mover populations(xyz,q)
-    , double body_force_xyz[3] // result: body force
-    , int const nxyz
-    , char const *restrict const solid
-    , double const *restrict const rho
-    , double *restrict const ux
-    , double *restrict const uy
-    , double *restrict const uz
+void initialize_body_force(
+      double body_force_xyz[3] // result: body force
+    , double const body_force
+    , double const body_force_dir=0 // 0: negative y-direction
 ) {
 
     // set body_force vector (global variable body_force_xyz)
@@ -539,6 +533,18 @@ void initialize_distrFunc(
     body_force_xyz[1] = -body_force*std::cos(arg);
     body_force_xyz[2] =  0;
 
+} // initialize_body_force
+
+template <typename real_t>
+void initialize_distrFunc(
+      view2D<real_t> & populations // result: mover populations(xyz,q)
+    , int const nxyz
+    , char   const *restrict const solid
+    , double const *restrict const rho
+    , double *restrict const ux
+    , double *restrict const uy
+    , double *restrict const uz
+) {
     double const uvec[3] = {0, 0, 0}; // input current
 
     for (index_t xyz = 0; xyz < nxyz; ++xyz) {
@@ -585,7 +591,7 @@ void initialize_droplet(
     for (int x = 0; x < Nx; ++x) {
         for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
-                index_t const xyz = indexyz(x, y, z);
+                index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
                     auto const radius = std::sqrt(pow2(x - dx) + pow2(y - dy) + pow2(z - dz));
                     auto const tmp = 0.5*(rho_sum - rho_diff*std::tanh(2.0*(radius - dr)/ifaceW));
@@ -607,8 +613,12 @@ double outputSave(
     , double const phi[]
     , int const ranks[3]
     , int const myrank
-//  , Nx, Ny, Nz                            from global variables
-//  , nx, ny, nz                            from global variables
+    , int const Nx, int const Ny, int const Nz
+    , int const nx, int const ny, int const nz
+    , int const save_rho
+    , int const save_pre
+    , int const save_vel
+    , double const G
 ) {
     static double timer_start, step_start{0};
 
@@ -635,7 +645,7 @@ double outputSave(
     for (int x = 0; x < Nx; ++x) {
         for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
-                index_t const xyz = indexyz(x, y, z); // local index into rho, ux, uy, uz
+                index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz); // local index into rho, ux, uy, uz
                 size_t const gxyz = ((x + offs[0])*ny + (y + offs[1]))*nz + (z + offs[2]); // global index
                 if (save_rho) rho_all[gxyz] = rho[xyz];
                 if (save_pre) pre_all[gxyz] = rho[xyz]/3.0 + ((phi) ? G*pow2(phi[phindex(x, y, z)])/6.0 : 0);
@@ -681,10 +691,14 @@ double run(
 ) {
     assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
 
-    Nx = nx; Ny = ny; Nz = nz; // local lattice sizes equal to global
-    NxNyNz = Nx*Ny*Nz; // here is some potential for memory alignment, but watch out for loop limits
+    int const Nx = nx;
+    int const Ny = ny; 
+    int const Nz = nz; // local lattice sizes equal to global
+    int const NxNyNz = Nx*Ny*Nz; // here is some potential for memory alignment, but watch out for loop limits
     auto const NxNyNz_aligned = (((NxNyNz - 1) >> 2) + 1) << 2;
     assert(NxNyNz_aligned >= NxNyNz);
+    
+    int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
 
     // allocate memory
     size_t const t_mem = (  sizeof(char)  *1 
@@ -737,15 +751,16 @@ double run(
     double const rho_solid = rho_boundary*(rhoh - rhol) + rhol;
     initialize_boundary(boundary, rho_solid, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed);
 
-    initialize_density(rho, solid, rhol); // low density value
+    initialize_density(rho, solid, rhol, NxNyNz); // low density value
     
     if (d1r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d1x, d1y, d1z, d1r, drop1, ifaceW, rhoh, rhol);  // droplet 1
     if (d2r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d2x, d2y, d2z, d2r, drop2, ifaceW, rhoh, rhol);  // droplet 2
     // extend:   initialize_droplet(rho, solid, Nx, Ny, Nz, d3x, d3y, d3z, d3r, drop3, ifaceW, rhoh, rhol);  // droplet 3
 
     double body_force_xyz[3];
-    initialize_distrFunc(f0, body_force_xyz, NxNyNz, solid, rho, ux, uy, uz);
-//     initialize_distrFunc(f0, solid, rho, ux, uy, uz, body_force_xyz);
+    initialize_body_force(body_force_xyz, body_force, body_force_dir);
+    
+    initialize_distrFunc(f0, NxNyNz, solid, rho, ux, uy, uz);
 
     double speed_stats[] = {0, 0, 0};
 
@@ -764,7 +779,8 @@ double run(
     // main iteration loop
     for (int t = 0; t <= time_total; t+=2) {
         if (0 == t % time_save) {
-            auto const speed = outputSave(t, rho, ux, uy, uz, phi, ranks, myrank); // save output to VTK image file
+            // save output to VTK image file
+            auto const speed = outputSave(t, rho, ux, uy, uz, phi, ranks, myrank, Nx, Ny, Nz, nx, ny, nz, save_rho, save_pre, save_vel, G);
             if (speed > 0) {
                 speed_stats[0] += 1;
                 speed_stats[1] += speed;
@@ -773,8 +789,8 @@ double run(
         } // measure and dump data as .vti files
 
         // calculate the distribution function for the next two time steps
-        update(f1, rho, ux, uy, uz, f0, stencil, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi);
-        update(f0, rho, ux, uy, uz, f1, stencil, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi);
+        update(f1, rho, ux, uy, uz, f0, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
+        update(f0, rho, ux, uy, uz, f1, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
     } // t
 
 #ifndef SuppressIO
