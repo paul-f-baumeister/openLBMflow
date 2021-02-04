@@ -38,6 +38,8 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 #include "lbm_stencil.hxx" // BKG_stencil<D,Q>, qooo, q..., pow2
 #include "lbm_cell.hxx" // CellInfo
 
+#include "data_view.hxx" // view2D<T>
+
 // === begin global variables
 
 // include file with initial parameters
@@ -510,7 +512,8 @@ void initialize_density(
 
 template <typename real_t>
 void initialize_distrFunc(
-      real_t *restrict const f  // f[nx*ny*nz*Q_aligned] mover populations
+//       real_t *restrict const f  // f[nx*ny*nz*Q_aligned] mover populations
+      view2D<real_t> & populations // mover populations
     , char const *restrict const solid
     , double const *restrict const rho
     , double *restrict const ux
@@ -545,7 +548,8 @@ void initialize_distrFunc(
                 double const weight = stencil.weight(v2);
 //              double const feq = 0.5*weight*rho_tmp*(2 + 6*vel + 9*pow2(vel) - 3*u_squared);
                 double const feq = stencil.equilibrium(0.5*weight*rho_tmp, vel, u_squared);
-                f[ipop(xyz, q)] = feq;
+//                 f[ipop(xyz, q)] = feq;
+                populations(xyz, q) = feq;
             } // q
 
             ux[xyz] = ux_tmp;
@@ -689,7 +693,7 @@ double run(
     // populations (two copies)
     auto const f0    = get_memory<real_t>(NxNyNz*Q_aligned);
     auto const f1    = get_memory<real_t>(NxNyNz*Q_aligned);
-
+    
     // observables
     // ToDo: group together into a view2D<double> that can be switched between SoA[4][NxNyNz_aligned] and AoS[NxNyNz][4];
     auto const rho   = get_memory<double>(NxNyNz_aligned, 0.0);
@@ -717,7 +721,10 @@ double run(
     // extend:   initialize_droplet(d3x, d3y, d3z, d3r, drop3, solid, rho, rhoh, rhol);  // droplet 3
 
     double body_force_xyz[3];
-    initialize_distrFunc(f0, solid, rho, ux, uy, uz, body_force_xyz);
+//     ipop(xyz, q): xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
+    view2D<real_t> pop0(f0, Q_aligned); // warp
+    initialize_distrFunc(pop0, solid, rho, ux, uy, uz, body_force_xyz);
+//     initialize_distrFunc(f0, solid, rho, ux, uy, uz, body_force_xyz);
 
     double speed_stats[] = {0, 0, 0};
 
