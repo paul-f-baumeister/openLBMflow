@@ -675,20 +675,21 @@ double outputSave(
     return Speed;
 } // outputSave
 
-#include "openLBMFlow_conf.c"
-
 template <typename real_t> // floating point type of populations
 double run(
     int const myrank=0
+) {
+    assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
+
+#include "openLBMFlow_conf.c"
 //  , nx, ny, nz                            from global variables (read-only)
 //  , boundary_*                            from global variables (read-only)
 //  , D, Q,                                 from global variables (read-only)
 //  , rhoh, rhol, rho_boundary, drop...     from global variables (read-only)
 //  , bot_wall_speed, top_wall_speed        from global variables (read-only)
 //  , total_time, time_save                 from global variables (read-only)
-) {
-    assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
-
+    
+    
     int const Nx = nx;
     int const Ny = ny; 
     int const Nz = nz; // local lattice sizes equal to global
@@ -697,10 +698,9 @@ double run(
     assert(NxNyNz_aligned >= NxNyNz);
     
     
-    int constexpr D = 3, Q = 19;
-    BKG_stencil<D,Q> const stencil;
+    BKG_stencil<3,19> const stencil;
     
-    int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
+    int constexpr Q_aligned = stencil.Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
 
     // allocate memory
     size_t const t_mem = (  sizeof(char)  *1 
@@ -711,7 +711,7 @@ double run(
 #endif
                            ) * nx*ny*nz;
     printf("LBM  needs %.6f GiByte total for D%dQ%d with (%d x %d x %d) cells.\n", 
-                t_mem/double(1ull << 30),    D, Q,        nx,  ny,  nz);
+                t_mem/double(1ull << 30), stencil.D, stencil.Q, nx, ny, nz);
 
     // cell info
     auto const solid = get_memory<char>(NxNyNz); // one Byte per cell
