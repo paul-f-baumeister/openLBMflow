@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
-#     source \
-#     examples/multiphase_drop_impact \
-#     examples/multiphase_coalescence \
-#     examples/multiphase_coalescence_impact \
-#     examples/multiphase_drop_on_drop_impact \
-#     examples/multiphase_rising_bubble \
 
+#     examples/singlephase_couette_flow \
+#     examples/singlephase_lid_driven_cavity \
 for path in \
-    examples/singlephase_couette_flow \
-    examples/singlephase_lid_driven_cavity \
+    source \
+    examples/multiphase_drop_impact \
+    examples/multiphase_coalescence \
+    examples/multiphase_coalescence_impact \
+    examples/multiphase_drop_on_drop_impact \
+    examples/multiphase_rising_bubble \
     examples/singlephase_poiseuille_flow_3D_channel \
     examples/singlephase_poiseuille_flow_plate \
 ; do
@@ -36,6 +36,8 @@ for path in \
     ./LBMflow && \
     ../tools/numdiff  ./output/openLBMflow_0000200.vti \
             ../$path/reference/openLBMflow_0000200.vti
+    echo $path
+    echo
 
 done
 
