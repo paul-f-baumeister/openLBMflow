@@ -10,10 +10,54 @@ typedef int status_t;
 
 uint64_t constexpr NonTransposed = 0xfedcba9876543210;
 
+#define UpperBoundsCheck
+#ifdef  UpperBoundsCheck
+  int64_t constexpr RangeUnknown = -1;
+  #define UpperBound(UB) (UB)
+#else  // UpperBoundsCheck
+  #define UpperBound(UB) 0
+#endif // UpperBoundsCheck
+
+#ifdef  LowerBoundsCheck
+  bool constexpr LowerBoundCheck = true;
+#else
+  bool constexpr LowerBoundCheck = false;
+#endif
+
 // for view1D
 #define debug_printf(...) printf(__VA_ARGS__)
 // #define debug_printf(...)
 
+namespace data_view {
+  
+  template <typename int_t>
+  inline void check_index(
+        int_t const index
+      , int const rank
+      , int64_t const number
+      , int const Rank
+      , void* const at=nullptr
+  ) {
+      if (LowerBoundCheck) {
+          if (index < 0) {
+              std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %li < 0)\n\n",
+                                                Rank, at, rank, index);
+          }
+          assert(0 <= index);
+      } // LowerBoundCheck
+      #ifdef UpperBoundsCheck
+          if (number > RangeUnknown) {
+              if (index >= number) {
+                  std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %li >= %ld)\n\n", 
+                                                    Rank, at, rank, index, number);
+              }
+              assert(index < number);
+          } // RangeUnknown
+      #endif // UpperBoundsCheck
+  } // check_index
+
+} // namespace data_view  
+  
 template <typename T, typename int_t=int64_t>
 class view1D {
   // the data view can be transposed at no cost as we include only the two strides
@@ -21,17 +65,26 @@ class view1D {
 public:
   static int constexpr Rank = 1;
 
-  view1D() : _data(nullptr), _s0(0), _mem(0) { 
+  view1D() : _data(nullptr), _s0(0), _mem(0) {
+#ifdef  UpperBoundsCheck
+      _n0 = RangeUnknown;
+#endif // UpperBoundsCheck
       debug_printf("# view1D() default constructor\n");
   } // default constructor
 
   view1D(T* const ptr, int_t const stride=1) 
     : _data(ptr), _s0(stride), _mem(0) { 
+#ifdef  UpperBoundsCheck
+      _n0 = RangeUnknown;
+#endif // UpperBoundsCheck
       debug_printf("# view1D(ptr, stride=%i) constructor\n", stride);
   } // data view constructor
 
   view1D(size_t const n0, T const init_value={0})
     : _data(new T[n0]), _s0(1), _mem(n0*sizeof(T)) {
+#ifdef  UpperBoundsCheck
+      _n0 = n0;
+#endif // UpperBoundsCheck
       debug_printf("# view1D(%d [,init_value]) constructor allocates %g kByte\n", n0, _mem*.001);
       std::fill(_data, _data + n0, init_value); // warning! first touch here!
   } // memory owning constructor, ToDo: move this to the derived type
@@ -63,6 +116,9 @@ public:
       _data = rhs._data;
       _s0   = rhs._s0;
       _mem  = rhs._mem; rhs._mem = 0; // steal ownership
+#ifdef  UpperBoundsCheck
+      _n0 = rhs._n0;
+#endif // UpperBoundsCheck
       return *this;
   } // move assignment
 
@@ -72,17 +128,32 @@ public:
   //     _data = rhs._data;
   //     _s0   = rhs._s0;
   //     _mem  = 0; // we are just a shallow copy
+#ifdef  UpperBoundsCheck
+//       _n0 = rhs._n0;
+#endif // UpperBoundsCheck
   //     return *this;
   // } // move assignment
 
-  T const & operator () (int_t const i0) const { return _data[i0*_s0]; }
-  T       & operator () (int_t const i0)       { return _data[i0*_s0]; }
+private:
+  
+  inline size_t _index(
+        int_t const i0
+  ) const {
+      data_view::check_index(i0, 0, UpperBound(_n0), Rank, (void*)this);
+      return i0*_s0;
+  } // _index
+
+public:
+  
+  T const & operator () (int_t const i0) const { return _data[_index(i0)]; }
+  T       & operator () (int_t const i0)       { return _data[_index(i0)]; }
   
   // no slicing, [] also mean data access (like vectors)
-  T const & operator [] (int_t const i0) const { return _data[i0*_s0]; }
-  T       & operator [] (int_t const i0)       { return _data[i0*_s0]; }
+  T const & operator [] (int_t const i0) const { return _data[_index(i0)]; }
+  T       & operator [] (int_t const i0)       { return _data[_index(i0)]; }
 
   T*      data()   const { return _data; }
+  
 //size_t  stride() const { return 1; } // view1D did not exist in old versions
 
 private:
@@ -90,6 +161,9 @@ private:
   T * _data;
   int_t _s0;
   size_t _mem; // only > 0 if memory owner
+#ifdef  UpperBoundsCheck
+  int64_t _n0;
+#endif // UpperBoundsCheck
 
 }; // view1D
 
@@ -118,17 +192,26 @@ class view2D {
 public:
   static int constexpr Rank = 2;
 
-  view2D() : _data(nullptr), _s0(0), _s1(0), _mem(0) { 
+  view2D() : _data(nullptr), _s0(0), _s1(0), _mem(0) {
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = RangeUnknown; }
+#endif // UpperBoundsCheck
       debug_printf("# view2D() default constructor\n");
   } // default constructor
 
   view2D(T* const ptr, int_t const stride1, int_t const stride0=1) 
     : _data(ptr), _s0(stride0), _s1(stride1), _mem(0) { 
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = RangeUnknown; }
+#endif // UpperBoundsCheck
       debug_printf("# view2D(ptr, s1=%i, s0=%i) constructor\n", stride1, stride0);
   } // data view constructor
 
   view2D(size_t const n1, size_t const n0, T const init_value={0})
     : _data(new T[n1*n0]), _s0(1), _s1(n0), _mem(n1*n0*sizeof(T)) {
+#ifdef  UpperBoundsCheck
+      _n[0] = n0; _n[1] = n1;
+#endif // UpperBoundsCheck
       debug_printf("# view2D(%d, %d [,init_value]) constructor allocates %g kByte\n", n1, n0, _mem*.001);
       std::fill(_data, _data + n1*n0, init_value); // warning! first touch here!
   } // memory owning constructor, ToDo: move this to the derived type
@@ -160,6 +243,9 @@ public:
       _data = rhs._data;
       _s0   = rhs._s0;
       _s1   = rhs._s1;
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = rhs._n[r]; }
+#endif // UpperBoundsCheck
       _mem  = rhs._mem; rhs._mem = 0; // steal ownership
       return *this;
   } // move assignment
@@ -171,16 +257,31 @@ public:
   //     _s0   = rhs._s0; 
   //     _s1   = rhs._s1;
   //     _mem  = 0; // we are just a shallow copy
+#ifdef  UpperBoundsCheck
+//       for(int r = 0; r < Rank; ++r) { _n[r] = rhs._n[r]; }
+#endif // UpperBoundsCheck
   //     return *this;
   // } // move assignment
 
+private:
+  
+  inline size_t _index(
+        int_t const i1
+      , int_t const i0
+  ) const {
+      data_view::check_index(i0, 0, UpperBound(_n[0]), Rank, (void*)this);
+      data_view::check_index(i1, 1, UpperBound(_n[1]), Rank, (void*)this);
+      return i1*_s1 + i0*_s0;
+  } // _index
 
-  T const & operator () (int_t const i1, int_t const i0) const { return _data[i1*_s1 + i0*_s0]; }
-  T       & operator () (int_t const i1, int_t const i0)       { return _data[i1*_s1 + i0*_s0]; }
+public:
+
+  T const & operator () (int_t const i1, int_t const i0) const { return _data[_index(i1,i0)]; }
+  T       & operator () (int_t const i1, int_t const i0)       { return _data[_index(i1,i0)]; }
 
   // slicing
-  view1D<T const,int_t> operator [] (int_t const i1) const { return view1D<T const,int_t>(_data + i1*_s1, _s0); }
-  view1D<T      ,int_t> operator [] (int_t const i1)       { return view1D<T      ,int_t>(_data + i1*_s1, _s0); }
+  view1D<T const,int_t> operator [] (int_t const i1) const { return view1D<T const,int_t>(_data + _index(i1,0), _s0); }
+  view1D<T      ,int_t> operator [] (int_t const i1)       { return view1D<T      ,int_t>(_data + _index(i1,0), _s0); }
 
   T*      data()   const { return _data; }
 
@@ -202,7 +303,7 @@ public:
       if (new_s0 != _s1 || new_s1 != _s0) {
           debug_printf("# view2D transpose with non-standard permutation %2.2x\n", permutation);
       } // warn
-      return view2D(_data, new_s1, new_s0);
+      return view2D(_data, new_s1, new_s0); // UpperBoundsCheck not possible on transpose
   } // transpose
 
 private:
@@ -210,6 +311,9 @@ private:
   T * _data;
   int_t _s0, _s1;
   size_t _mem; // only > 0 if memory owner
+#ifdef  UpperBoundsCheck
+  int64_t _n[Rank];
+#endif // UpperBoundsCheck
 
 }; // view2D
 
@@ -270,16 +374,25 @@ public:
   static int constexpr Rank = 3;
 
   view3D() : _data(nullptr), _s0(0), _s1(0), _s2(0), _mem(0) { 
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = RangeUnknown; }
+#endif // UpperBoundsCheck
       debug_printf("# view3D() default constructor\n");
   } // default constructor
 
   view3D(T* const ptr, int_t const stride2, int_t const stride1, int_t const stride0=1) 
     : _data(ptr), _s0(stride0), _s1(stride1), _s2(stride2), _mem(0) { 
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = RangeUnknown; }
+#endif // UpperBoundsCheck
       debug_printf("# view3D(ptr, s2=%i, s1=%i, s0=%i) constructor\n", stride2, stride1, stride0);
   } // data view constructor
 
   view3D(size_t const n2, size_t const n1, size_t const n0, T const init_value={0})
     : _data(new T[n2*n1*n0]), _s0(1), _s1(n0), _s2(n1*n0), _mem(n2*n1*n0*sizeof(T)) {
+#ifdef  UpperBoundsCheck
+      _n[0] = n0; _n[1] = n1; _n[2] = n2;
+#endif // UpperBoundsCheck
       debug_printf("# view3D(%d, %d, %d [,init_value]) constructor allocates %g kByte\n", n2, n1, n0, _mem*.001);
       std::fill(_data, _data + n2*n1*n0, init_value); // warning! first touch here!
   } // memory owning constructor, ToDo: move this to the derived type
@@ -313,6 +426,9 @@ public:
       _s1   = rhs._s1;
       _s2   = rhs._s2;
       _mem  = rhs._mem; rhs._mem = 0; // steal ownership
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = rhs._n[r]; }
+#endif // UpperBoundsCheck
       return *this;
   } // move assignment
 
@@ -324,20 +440,35 @@ public:
   //     _s1   = rhs._s1;
   //     _s2   = rhs._s2;
   //     _mem  = 0; // we are just a shallow copy
+#ifdef  UpperBoundsCheck
+//       for(int r = 0; r < Rank; ++r) { _n[r] = rhs._n[r]; }
+#endif // UpperBoundsCheck
   //     return *this;
   // } // move assignment
 
+private:
+  
+  inline size_t _index(
+        int_t const i2
+      , int_t const i1
+      , int_t const i0
+  ) const {
+      data_view::check_index(i0, 0, UpperBound(_n[0]), Rank, (void*)this);
+      data_view::check_index(i1, 1, UpperBound(_n[1]), Rank, (void*)this);
+      data_view::check_index(i2, 2, UpperBound(_n[2]), Rank, (void*)this);
+      return i2*_s2 + i1*_s1 + i0*_s0;
+  } // _index
 
-  T const & operator () (int_t const i2, int_t const i1, int_t const i0) const {
-            return _data[i2*_s2 + i1*_s1 + i0*_s0]; }
-  T       & operator () (int_t const i2, int_t const i1, int_t const i0)       {
-            return _data[i2*_s2 + i1*_s1 + i0*_s0]; }
+public:
+  
+  T const & operator () (int_t const i2, int_t const i1, int_t const i0) const { return _data[_index(i2,i1,i0)]; }
+  T       & operator () (int_t const i2, int_t const i1, int_t const i0)       { return _data[_index(i2,i1,i0)]; }
 
   // slicing
   view2D<T const,int_t> operator [] (int_t const i2) const {
-            return view2D<T const,int_t>(_data + i2*_s2, _s1, _s0); }
+            return view2D<T const,int_t>(_data + _index(i2,0,0), _s1, _s0); }
   view2D<T      ,int_t> operator [] (int_t const i2)       {
-            return view2D<T      ,int_t>(_data + i2*_s2, _s1, _s0); }
+            return view2D<T      ,int_t>(_data + _index(i2,0,0), _s1, _s0); }
 
   T* data() const { return _data; }
   
@@ -397,6 +528,9 @@ private:
   T * _data;
   int_t _s0, _s1, _s2;
   size_t _mem; // only > 0 if memory owner
+#ifdef  UpperBoundsCheck
+  int64_t _n[Rank];
+#endif // UpperBoundsCheck
 
 }; // view3D
 
@@ -420,16 +554,25 @@ public:
   static int constexpr Rank = 4;
 
   view4D() : _data(nullptr), _s0(0), _s1(0), _s2(0), _s3(0), _mem(0) { 
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = RangeUnknown; }
+#endif // UpperBoundsCheck
       debug_printf("# view4D() default constructor\n");
   } // default constructor
 
   view4D(T* const ptr, int_t const stride3, int_t const stride2, int_t const stride1, int_t const stride0=1) 
     : _data(ptr), _s0(stride0), _s1(stride1), _s2(stride2), _s3(stride3), _mem(0) { 
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = RangeUnknown; }
+#endif // UpperBoundsCheck
       debug_printf("# view4D(ptr, s3=%i, s2=%i, s1=%i, s0=%i) constructor\n", stride3, stride2, stride1, stride0);
   } // data view constructor
 
   view4D(size_t const n3, size_t const n2, size_t const n1, size_t const n0, T const init_value={0})
     : _data(new T[n3*n2*n1*n0]), _s0(1), _s1(n0), _s2(n1*n0), _s3(n2*n1*n0), _mem(n3*n2*n1*n0*sizeof(T)) {
+#ifdef  UpperBoundsCheck
+      _n[0] = n0; _n[1] = n1; _n[2] = n2; _n[3] = n3;
+#endif // UpperBoundsCheck
       debug_printf("# view4D(%d, %d, %d, %d [,init_value]) constructor allocates %g kByte\n", n3, n2, n1, n0, _mem*.001);
       std::fill(_data, _data + n3*n2*n1*n0, init_value); // warning! first touch here!
   } // memory owning constructor, ToDo: move this to the derived type
@@ -464,6 +607,9 @@ public:
       _s2   = rhs._s2;
       _s3   = rhs._s3;
       _mem  = rhs._mem; rhs._mem = 0; // steal ownership
+#ifdef  UpperBoundsCheck
+      for(int r = 0; r < Rank; ++r) { _n[r] = rhs._n[r]; }
+#endif // UpperBoundsCheck
       return *this;
   } // move assignment
 
@@ -476,20 +622,39 @@ public:
   //     _s2   = rhs._s2;
   //     _s3   = rhs._s3;
   //     _mem  = 0; // we are just a shallow copy
+#ifdef  UpperBoundsCheck
+//       for(int r = 0; r < Rank; ++r) { _n[r] = rhs._n[r]; }
+#endif // UpperBoundsCheck
   //     return *this;
   // } // move assignment
 
+private:
+  
+  inline size_t _index(
+        int_t const i3
+      , int_t const i2
+      , int_t const i1
+      , int_t const i0
+  ) const {
+      data_view::check_index(i0, 0, UpperBound(_n[0]), Rank, (void*)this);
+      data_view::check_index(i1, 1, UpperBound(_n[1]), Rank, (void*)this);
+      data_view::check_index(i2, 2, UpperBound(_n[2]), Rank, (void*)this);
+      data_view::check_index(i3, 3, UpperBound(_n[3]), Rank, (void*)this);
+      return i3*_s3 + i2*_s2 + i1*_s1 + i0*_s0;
+  } // _index
+
+public:
 
   T const & operator () (int_t const i3, int_t const i2, int_t const i1, int_t const i0) const {
-            return _data[i3*_s3 + i2*_s2 + i1*_s1 + i0*_s0]; }
+            return _data[_index(i3,i2,i1,i0)]; }
   T       & operator () (int_t const i3, int_t const i2, int_t const i1, int_t const i0)       {
-            return _data[i3*_s3 + i2*_s2 + i1*_s1 + i0*_s0]; }
+            return _data[_index(i3,i2,i1,i0)]; }
 
   // slicing
   view3D<T const,int_t> operator [] (int_t const i3) const {
-            return view3D<T const,int_t>(_data + i3*_s3, _s2, _s1, _s0); }
+            return view3D<T const,int_t>(_data + _index(i3,0,0,0), _s2, _s1, _s0); }
   view3D<T      ,int_t> operator [] (int_t const i3)       {
-            return view3D<T      ,int_t>(_data + i3*_s3, _s2, _s1, _s0); }
+            return view3D<T      ,int_t>(_data + _index(i3,0,0,0), _s2, _s1, _s0); }
 
   T* data() const { return _data; }
   
@@ -554,6 +719,9 @@ private:
   T * _data;
   int_t _s0, _s1, _s2, _s3;
   size_t _mem; // only > 0 if memory owner
+#ifdef  UpperBoundsCheck
+  int64_t _n[Rank];
+#endif // UpperBoundsCheck
 
 }; // view4D
 

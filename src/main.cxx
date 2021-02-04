@@ -64,10 +64,13 @@ int Nx, Ny, Nz, NxNyNz; // local lattice sizes, NxNyNz >= Nx*Ny*Nz
 inline index_t indexyz(int const x, int const y, int const z) { return (x*Ny + y)*Nz + z; }
 // inline index_t phindex(int const x, int const y, int const z) { return ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1); } // enlarged with a halo of thickness 1
 int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
+
+#if 0
 inline index_t ipop(index_t const xyz, int const q) {
     return xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
 //     return q*NxNyNz + xyz; // activate for SoA (structure of arrays) data layout
 } // ipop
+#endif
 
 #define phindex(x,y,z) ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1) // enlarged with a halo of thickness 1
 
@@ -114,7 +117,8 @@ template <typename real_t>
 inline void solid_cell_treatment(
       index_t const xyz
     , double const *restrict const rho // rho[nxyz]
-    , real_t const *restrict const fn  // fn[nxyz*Q] or fn[Q*nxyz]
+//     , real_t const *restrict const fn  // fn[nxyz*Q] or fn[Q*nxyz]
+    , view2D<real_t> const & fn  // fn[nxyz*Q] or fn[Q*nxyz]
     , real_t       *restrict const tmp_fn // inout: tmp_fn[Q]
     , double const top_wall_speed
     , double const bot_wall_speed=0
@@ -122,7 +126,8 @@ inline void solid_cell_treatment(
 ) {
 
     for (int q = 0; q < stencil.Q; ++q) {
-        tmp_fn[q] = fn[ipop(xyz, stencil.opposite(q))]; // reflection
+//         tmp_fn[q] = fn[ipop(xyz, stencil.opposite(q))]; // reflection
+        tmp_fn[q] = fn(xyz, stencil.opposite(q)); // reflection
     } // q
 
 
@@ -145,7 +150,8 @@ template <typename real_t>
 inline void propagate(
       int const x, int const y, int const z
     , real_t const *restrict const tmp_fn // input vector[Q]
-    , real_t       *restrict const fn     // output
+//  , real_t       *restrict const fn     // output
+    , view2D<real_t> & fn // output f(xyz, q)
     , int const Nx, int const Ny, int const Nz
 ) {
     // exploit that we can assume the local domain to be periodic
@@ -163,25 +169,25 @@ inline void propagate(
 
     // depending of their velocities, the polulations in tmp_fn[Q] at (x,y,z)
     // are streamed to the other lattice sites
-    fn[ipop(indexyz(ox, oy, oz), q_ooo)] = tmp_fn[q_ooo]; //
-    fn[ipop(indexyz(px, oy, oz), q_poo)] = tmp_fn[q_poo]; // +x
-    fn[ipop(indexyz(px, py, oz), q_ppo)] = tmp_fn[q_ppo]; // +x+y
-    fn[ipop(indexyz(ox, py, oz), q_opo)] = tmp_fn[q_opo]; //   +y
-    fn[ipop(indexyz(nx, py, oz), q_npo)] = tmp_fn[q_npo]; // -x+y
-    fn[ipop(indexyz(nx, oy, oz), q_noo)] = tmp_fn[q_noo]; // -x
-    fn[ipop(indexyz(nx, ny, oz), q_nno)] = tmp_fn[q_nno]; // -x-y
-    fn[ipop(indexyz(ox, ny, oz), q_ono)] = tmp_fn[q_ono]; //   -y
-    fn[ipop(indexyz(px, ny, oz), q_pno)] = tmp_fn[q_pno]; // +x-y
-    fn[ipop(indexyz(ox, py, pz), q_opp)] = tmp_fn[q_opp]; //   +y+z
-    fn[ipop(indexyz(ox, oy, pz), q_oop)] = tmp_fn[q_oop]; //     +z
-    fn[ipop(indexyz(ox, ny, pz), q_onp)] = tmp_fn[q_onp]; //   -y+z
-    fn[ipop(indexyz(ox, ny, nz), q_onn)] = tmp_fn[q_onn]; //   -y-z
-    fn[ipop(indexyz(ox, oy, nz), q_oon)] = tmp_fn[q_oon]; //     -z
-    fn[ipop(indexyz(ox, py, nz), q_opn)] = tmp_fn[q_opn]; //   +y-z
-    fn[ipop(indexyz(px, oy, pz), q_pop)] = tmp_fn[q_pop]; // +x  +z
-    fn[ipop(indexyz(nx, oy, pz), q_nop)] = tmp_fn[q_nop]; // -x  +z
-    fn[ipop(indexyz(nx, oy, nz), q_non)] = tmp_fn[q_non]; // -x  -z
-    fn[ipop(indexyz(px, oy, nz), q_pon)] = tmp_fn[q_pon]; // +x  -z
+    fn(indexyz(ox, oy, oz), q_ooo) = tmp_fn[q_ooo]; //
+    fn(indexyz(px, oy, oz), q_poo) = tmp_fn[q_poo]; // +x
+    fn(indexyz(px, py, oz), q_ppo) = tmp_fn[q_ppo]; // +x+y
+    fn(indexyz(ox, py, oz), q_opo) = tmp_fn[q_opo]; //   +y
+    fn(indexyz(nx, py, oz), q_npo) = tmp_fn[q_npo]; // -x+y
+    fn(indexyz(nx, oy, oz), q_noo) = tmp_fn[q_noo]; // -x
+    fn(indexyz(nx, ny, oz), q_nno) = tmp_fn[q_nno]; // -x-y
+    fn(indexyz(ox, ny, oz), q_ono) = tmp_fn[q_ono]; //   -y
+    fn(indexyz(px, ny, oz), q_pno) = tmp_fn[q_pno]; // +x-y
+    fn(indexyz(ox, py, pz), q_opp) = tmp_fn[q_opp]; //   +y+z
+    fn(indexyz(ox, oy, pz), q_oop) = tmp_fn[q_oop]; //     +z
+    fn(indexyz(ox, ny, pz), q_onp) = tmp_fn[q_onp]; //   -y+z
+    fn(indexyz(ox, ny, nz), q_onn) = tmp_fn[q_onn]; //   -y-z
+    fn(indexyz(ox, oy, nz), q_oon) = tmp_fn[q_oon]; //     -z
+    fn(indexyz(ox, py, nz), q_opn) = tmp_fn[q_opn]; //   +y-z
+    fn(indexyz(px, oy, pz), q_pop) = tmp_fn[q_pop]; // +x  +z
+    fn(indexyz(nx, oy, pz), q_nop) = tmp_fn[q_nop]; // -x  +z
+    fn(indexyz(nx, oy, nz), q_non) = tmp_fn[q_non]; // -x  -z
+    fn(indexyz(px, oy, nz), q_pon) = tmp_fn[q_pon]; // +x  -z
 
 } // propagate
 
@@ -197,18 +203,21 @@ inline void propagate(
 // kernel (performance critical code section)
 template <typename real_t>
 void update(
-      char   const *restrict const solid
-    , double const *restrict const body_force_xyz
-    , real_t const *restrict const fp //  input populations
-    , real_t       *restrict const fn // output populations
+      view2D<real_t> & fn // output populations fn(xyz, q)
     , double       *restrict const rho // output density
     , double       *restrict const ux
     , double       *restrict const uy // output macroscopic velocities
     , double       *restrict const uz
+    , view2D<real_t> const & fp // input previous populations fp(xyz, q)
+    , BKG_stencil<3,19> const & stencil
     , int const Nx, int const Ny, int const Nz
-    , double const top_wall_speed, double const bot_wall_speed
+    , char   const *restrict const solid
+    , double const *restrict const body_force_xyz
+    , double const top_wall_speed
+    , double const bot_wall_speed
     , double       *restrict const phi=nullptr // output phase field in the case of multiphase flow
-//  , stencil                               from global variables
+//     , real_t const *restrict const fp //  input populations
+//     , real_t       *restrict const fn // output populations
 ) {
     // relaxation time constant tau
     double const inv_tau = 1.0/tau;
@@ -224,25 +233,25 @@ void update(
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
                     // load
-                    double const f_ooo = fp[ipop(xyz, q_ooo)];
-                    double const f_poo = fp[ipop(xyz, q_poo)];
-                    double const f_ppo = fp[ipop(xyz, q_ppo)];
-                    double const f_opo = fp[ipop(xyz, q_opo)];
-                    double const f_npo = fp[ipop(xyz, q_npo)];
-                    double const f_noo = fp[ipop(xyz, q_noo)];
-                    double const f_nno = fp[ipop(xyz, q_nno)];
-                    double const f_ono = fp[ipop(xyz, q_ono)];
-                    double const f_pno = fp[ipop(xyz, q_pno)];
-                    double const f_opp = fp[ipop(xyz, q_opp)];
-                    double const f_oop = fp[ipop(xyz, q_oop)];
-                    double const f_onp = fp[ipop(xyz, q_onp)];
-                    double const f_onn = fp[ipop(xyz, q_onn)];
-                    double const f_oon = fp[ipop(xyz, q_oon)];
-                    double const f_opn = fp[ipop(xyz, q_opn)];
-                    double const f_pop = fp[ipop(xyz, q_pop)];
-                    double const f_nop = fp[ipop(xyz, q_nop)];
-                    double const f_non = fp[ipop(xyz, q_non)];
-                    double const f_pon = fp[ipop(xyz, q_pon)];
+                    double const f_ooo = fp(xyz, q_ooo);
+                    double const f_poo = fp(xyz, q_poo);
+                    double const f_ppo = fp(xyz, q_ppo);
+                    double const f_opo = fp(xyz, q_opo);
+                    double const f_npo = fp(xyz, q_npo);
+                    double const f_noo = fp(xyz, q_noo);
+                    double const f_nno = fp(xyz, q_nno);
+                    double const f_ono = fp(xyz, q_ono);
+                    double const f_pno = fp(xyz, q_pno);
+                    double const f_opp = fp(xyz, q_opp);
+                    double const f_oop = fp(xyz, q_oop);
+                    double const f_onp = fp(xyz, q_onp);
+                    double const f_onn = fp(xyz, q_onn);
+                    double const f_oon = fp(xyz, q_oon);
+                    double const f_opn = fp(xyz, q_opn);
+                    double const f_pop = fp(xyz, q_pop);
+                    double const f_nop = fp(xyz, q_nop);
+                    double const f_non = fp(xyz, q_non);
+                    double const f_pon = fp(xyz, q_pon);
 
                     // calculate rho and ux, uy, uz
                     double const tmp_rho = f_ooo 
@@ -330,25 +339,25 @@ void update(
                     double const tmp_uz = uz[xyz] - tau*(G*tmp_phi*grad_phi_z)*inv_rho;
 
                     // load again
-                    double const f_ooo = fp[ipop(xyz, q_ooo)];
-                    double const f_poo = fp[ipop(xyz, q_poo)];
-                    double const f_ppo = fp[ipop(xyz, q_ppo)];
-                    double const f_opo = fp[ipop(xyz, q_opo)];
-                    double const f_npo = fp[ipop(xyz, q_npo)];
-                    double const f_noo = fp[ipop(xyz, q_noo)];
-                    double const f_nno = fp[ipop(xyz, q_nno)];
-                    double const f_ono = fp[ipop(xyz, q_ono)];
-                    double const f_pno = fp[ipop(xyz, q_pno)];
-                    double const f_opp = fp[ipop(xyz, q_opp)];
-                    double const f_oop = fp[ipop(xyz, q_oop)];
-                    double const f_onp = fp[ipop(xyz, q_onp)];
-                    double const f_onn = fp[ipop(xyz, q_onn)];
-                    double const f_oon = fp[ipop(xyz, q_oon)];
-                    double const f_opn = fp[ipop(xyz, q_opn)];
-                    double const f_pop = fp[ipop(xyz, q_pop)];
-                    double const f_nop = fp[ipop(xyz, q_nop)];
-                    double const f_non = fp[ipop(xyz, q_non)];
-                    double const f_pon = fp[ipop(xyz, q_pon)];
+                    double const f_ooo = fp(xyz, q_ooo);
+                    double const f_poo = fp(xyz, q_poo);
+                    double const f_ppo = fp(xyz, q_ppo);
+                    double const f_opo = fp(xyz, q_opo);
+                    double const f_npo = fp(xyz, q_npo);
+                    double const f_noo = fp(xyz, q_noo);
+                    double const f_nno = fp(xyz, q_nno);
+                    double const f_ono = fp(xyz, q_ono);
+                    double const f_pno = fp(xyz, q_pno);
+                    double const f_opp = fp(xyz, q_opp);
+                    double const f_oop = fp(xyz, q_oop);
+                    double const f_onp = fp(xyz, q_onp);
+                    double const f_onn = fp(xyz, q_onn);
+                    double const f_oon = fp(xyz, q_oon);
+                    double const f_opn = fp(xyz, q_opn);
+                    double const f_pop = fp(xyz, q_pop);
+                    double const f_nop = fp(xyz, q_nop);
+                    double const f_non = fp(xyz, q_non);
+                    double const f_pon = fp(xyz, q_pon);
 
 // ----------------------------------------------------// multi-phase //---------------------------------------end
 #endif // MultiPhase
@@ -687,10 +696,16 @@ double run(
 
     // cell info
     auto const solid = get_memory<char>  (NxNyNz); // one Byte per cell
-    // populations (two copies)
-    auto const f0    = get_memory<real_t>(NxNyNz*Q_aligned);
-    auto const f1    = get_memory<real_t>(NxNyNz*Q_aligned);
-    
+    // populations of the velocity distribution functions (two copies)
+//     auto const populations0 = get_memory<real_t>(NxNyNz*Q_aligned);
+//     auto const populations1 = get_memory<real_t>(NxNyNz*Q_aligned);
+//     ipop(xyz, q): xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
+//     view2D<real_t> f0(populations0, Q_aligned); // warp
+//     view2D<real_t> f1(populations1, Q_aligned); // warp
+    // use memory owning constructors
+    view2D<real_t> f0(NxNyNz, Q_aligned); // warp
+    view2D<real_t> f1(NxNyNz, Q_aligned); // warp
+
     // observables
     // ToDo: group together into a view2D<double> that can be switched between SoA[4][NxNyNz_aligned] and AoS[NxNyNz][4];
     auto const rho   = get_memory<double>(NxNyNz_aligned, 0.0);
@@ -718,9 +733,7 @@ double run(
     // extend:   initialize_droplet(d3x, d3y, d3z, d3r, drop3, solid, rho, rhoh, rhol);  // droplet 3
 
     double body_force_xyz[3];
-//     ipop(xyz, q): xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
-    view2D<real_t> pop0(f0, Q_aligned); // warp
-    initialize_distrFunc(pop0, body_force_xyz, NxNyNz, solid, rho, ux, uy, uz);
+    initialize_distrFunc(f0, body_force_xyz, NxNyNz, solid, rho, ux, uy, uz);
 //     initialize_distrFunc(f0, solid, rho, ux, uy, uz, body_force_xyz);
 
     double speed_stats[] = {0, 0, 0};
@@ -749,8 +762,8 @@ double run(
         } // measure and dump data as .vti files
 
         // calculate the distribution function for the next two time steps
-        update(solid, body_force_xyz, f0, f1, rho, ux, uy, uz, Nx, Ny, Nz, top_wall_speed, bot_wall_speed, phi);
-        update(solid, body_force_xyz, f1, f0, rho, ux, uy, uz, Nx, Ny, Nz, top_wall_speed, bot_wall_speed, phi);
+        update(f1, rho, ux, uy, uz, f0, stencil, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi);
+        update(f0, rho, ux, uy, uz, f1, stencil, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi);
     } // t
 
 #ifndef SuppressIO
@@ -766,8 +779,8 @@ double run(
 
     // free allocated memory
     delete[] solid;
-    delete[] f0;
-    delete[] f1;
+//     delete[] f0;
+//     delete[] f1;
     delete[] rho;
     delete[] ux;
     delete[] uy;
