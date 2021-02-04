@@ -208,7 +208,7 @@ void update(
     , double       *restrict const ux
     , double       *restrict const uy // output macroscopic velocities
     , double       *restrict const uz
-    , view2D<real_t> const & fp // input previous populations fp(xyz, q)
+    , view2D<real_t> const & f_previous // input previous populations fp(xyz, q)
     , BKG_stencil<3,19> const & stencil
     , int const Nx, int const Ny, int const Nz
     , char   const *restrict const solid
@@ -233,25 +233,26 @@ void update(
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
                     // load
-                    double const f_ooo = fp(xyz, q_ooo);
-                    double const f_poo = fp(xyz, q_poo);
-                    double const f_ppo = fp(xyz, q_ppo);
-                    double const f_opo = fp(xyz, q_opo);
-                    double const f_npo = fp(xyz, q_npo);
-                    double const f_noo = fp(xyz, q_noo);
-                    double const f_nno = fp(xyz, q_nno);
-                    double const f_ono = fp(xyz, q_ono);
-                    double const f_pno = fp(xyz, q_pno);
-                    double const f_opp = fp(xyz, q_opp);
-                    double const f_oop = fp(xyz, q_oop);
-                    double const f_onp = fp(xyz, q_onp);
-                    double const f_onn = fp(xyz, q_onn);
-                    double const f_oon = fp(xyz, q_oon);
-                    double const f_opn = fp(xyz, q_opn);
-                    double const f_pop = fp(xyz, q_pop);
-                    double const f_nop = fp(xyz, q_nop);
-                    double const f_non = fp(xyz, q_non);
-                    double const f_pon = fp(xyz, q_pon);
+                    auto const fp = f_previous[xyz]; // get a 1D subview
+                    double const f_ooo = fp[q_ooo];
+                    double const f_poo = fp[q_poo];
+                    double const f_ppo = fp[q_ppo];
+                    double const f_opo = fp[q_opo];
+                    double const f_npo = fp[q_npo];
+                    double const f_noo = fp[q_noo];
+                    double const f_nno = fp[q_nno];
+                    double const f_ono = fp[q_ono];
+                    double const f_pno = fp[q_pno];
+                    double const f_opp = fp[q_opp];
+                    double const f_oop = fp[q_oop];
+                    double const f_onp = fp[q_onp];
+                    double const f_onn = fp[q_onn];
+                    double const f_oon = fp[q_oon];
+                    double const f_opn = fp[q_opn];
+                    double const f_pop = fp[q_pop];
+                    double const f_nop = fp[q_nop];
+                    double const f_non = fp[q_non];
+                    double const f_pon = fp[q_pon];
 
                     // calculate rho and ux, uy, uz
                     double const tmp_rho = f_ooo 
@@ -339,25 +340,26 @@ void update(
                     double const tmp_uz = uz[xyz] - tau*(G*tmp_phi*grad_phi_z)*inv_rho;
 
                     // load again
-                    double const f_ooo = fp(xyz, q_ooo);
-                    double const f_poo = fp(xyz, q_poo);
-                    double const f_ppo = fp(xyz, q_ppo);
-                    double const f_opo = fp(xyz, q_opo);
-                    double const f_npo = fp(xyz, q_npo);
-                    double const f_noo = fp(xyz, q_noo);
-                    double const f_nno = fp(xyz, q_nno);
-                    double const f_ono = fp(xyz, q_ono);
-                    double const f_pno = fp(xyz, q_pno);
-                    double const f_opp = fp(xyz, q_opp);
-                    double const f_oop = fp(xyz, q_oop);
-                    double const f_onp = fp(xyz, q_onp);
-                    double const f_onn = fp(xyz, q_onn);
-                    double const f_oon = fp(xyz, q_oon);
-                    double const f_opn = fp(xyz, q_opn);
-                    double const f_pop = fp(xyz, q_pop);
-                    double const f_nop = fp(xyz, q_nop);
-                    double const f_non = fp(xyz, q_non);
-                    double const f_pon = fp(xyz, q_pon);
+                    auto const fp = f_previous[xyz]; // get a 1D subview
+                    double const f_ooo = fp[q_ooo];
+                    double const f_poo = fp[q_poo];
+                    double const f_ppo = fp[q_ppo];
+                    double const f_opo = fp[q_opo];
+                    double const f_npo = fp[q_npo];
+                    double const f_noo = fp[q_noo];
+                    double const f_nno = fp[q_nno];
+                    double const f_ono = fp[q_ono];
+                    double const f_pno = fp[q_pno];
+                    double const f_opp = fp[q_opp];
+                    double const f_oop = fp[q_oop];
+                    double const f_onp = fp[q_onp];
+                    double const f_onn = fp[q_onn];
+                    double const f_oon = fp[q_oon];
+                    double const f_opn = fp[q_opn];
+                    double const f_pop = fp[q_pop];
+                    double const f_nop = fp[q_nop];
+                    double const f_non = fp[q_non];
+                    double const f_pon = fp[q_pon];
 
 // ----------------------------------------------------// multi-phase //---------------------------------------end
 #endif // MultiPhase
@@ -695,7 +697,7 @@ double run(
                 t_mem/double(1ull << 30),    D, Q,        nx,  ny,  nz);
 
     // cell info
-    auto const solid = get_memory<char>  (NxNyNz); // one Byte per cell
+    auto const solid = get_memory<char>(NxNyNz); // one Byte per cell
     // populations of the velocity distribution functions (two copies)
 //     auto const populations0 = get_memory<real_t>(NxNyNz*Q_aligned);
 //     auto const populations1 = get_memory<real_t>(NxNyNz*Q_aligned);
@@ -703,8 +705,15 @@ double run(
 //     view2D<real_t> f0(populations0, Q_aligned); // warp
 //     view2D<real_t> f1(populations1, Q_aligned); // warp
     // use memory owning constructors
+#ifdef AoS  
     view2D<real_t> f0(NxNyNz, Q_aligned); // warp
     view2D<real_t> f1(NxNyNz, Q_aligned); // warp
+#else
+    view2D<real_t> f0_memory(Q_aligned, NxNyNz); // warp
+    view2D<real_t> f1_memory(Q_aligned, NxNyNz); // warp
+    auto f0 = f0_memory.transpose();
+    auto f1 = f1_memory.transpose();
+#endif
 
     // observables
     // ToDo: group together into a view2D<double> that can be switched between SoA[4][NxNyNz_aligned] and AoS[NxNyNz][4];
@@ -713,7 +722,7 @@ double run(
     auto const uy    = get_memory<double>(NxNyNz_aligned);
     auto const uz    = get_memory<double>(NxNyNz_aligned);
 #ifdef MultiPhase
-    auto const phi = get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)); // this array has halo-borders and needs to be indexed using phindex(x,y,z)
+    auto    const phi = get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)); // this array has halo-borders and needs to be indexed using phindex(x,y,z)
 #else
     double* const phi = nullptr;
 #endif
@@ -779,8 +788,6 @@ double run(
 
     // free allocated memory
     delete[] solid;
-//     delete[] f0;
-//     delete[] f1;
     delete[] rho;
     delete[] ux;
     delete[] uy;

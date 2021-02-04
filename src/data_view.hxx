@@ -10,7 +10,7 @@ typedef int status_t;
 
 uint64_t constexpr NonTransposed = 0xfedcba9876543210;
 
-#define UpperBoundsCheck
+// #define UpperBoundsCheck
 #ifdef  UpperBoundsCheck
   int64_t constexpr RangeUnknown = -1;
   #define UpperBound(UB) (UB)
@@ -25,8 +25,8 @@ uint64_t constexpr NonTransposed = 0xfedcba9876543210;
 #endif
 
 // for view1D
-#define debug_printf(...) printf(__VA_ARGS__)
-// #define debug_printf(...)
+// #define debug_printf(...) printf(__VA_ARGS__)
+#define debug_printf(...)
 
 namespace data_view {
   
