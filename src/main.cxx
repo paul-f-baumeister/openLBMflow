@@ -570,14 +570,15 @@ void initialize_distrFunc(
 
 
 void initialize_droplet(
-      double const dx, double const dy, double const dz // droplet center
-    , double const dr // droplet radius
-    , int const drop
+      double     *restrict const rho // in/output density
     , char const *restrict const solid
-    , double     *restrict const rho // in/output density
+    , int const Nx, int const Ny, int const Nz
+    , double const dx, double const dy, double const dz // droplet center
+    , double const dr // droplet radius
+    , int    const drop
+    , double const ifaceW
     , double const rho_high
-    , double const rho_low=0
-//  , Nx, Ny, Nz                            from global variables
+    , double const rho_low
 ) {
     auto const rho_diff = (rho_high - rho_low)*drop;
     auto const rho_sum  =  rho_high + rho_low;
@@ -705,7 +706,8 @@ double run(
 //     view2D<real_t> f0(populations0, Q_aligned); // warp
 //     view2D<real_t> f1(populations1, Q_aligned); // warp
     // use memory owning constructors
-#ifdef AoS  
+#define AoS
+#ifdef AoS
     view2D<real_t> f0(NxNyNz, Q_aligned); // warp
     view2D<real_t> f1(NxNyNz, Q_aligned); // warp
 #else
@@ -736,10 +738,10 @@ double run(
     initialize_boundary(boundary, rho_solid, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed);
 
     initialize_density(rho, solid, rhol); // low density value
-
-    if (d1r > 0) initialize_droplet(d1x, d1y, d1z, d1r, drop1, solid, rho, rhoh, rhol);  // droplet 1
-    if (d2r > 0) initialize_droplet(d2x, d2y, d2z, d2r, drop2, solid, rho, rhoh, rhol);  // droplet 2
-    // extend:   initialize_droplet(d3x, d3y, d3z, d3r, drop3, solid, rho, rhoh, rhol);  // droplet 3
+    
+    if (d1r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d1x, d1y, d1z, d1r, drop1, ifaceW, rhoh, rhol);  // droplet 1
+    if (d2r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d2x, d2y, d2z, d2r, drop2, ifaceW, rhoh, rhol);  // droplet 2
+    // extend:   initialize_droplet(rho, solid, Nx, Ny, Nz, d3x, d3y, d3z, d3r, drop3, ifaceW, rhoh, rhol);  // droplet 3
 
     double body_force_xyz[3];
     initialize_distrFunc(f0, body_force_xyz, NxNyNz, solid, rho, ux, uy, uz);
