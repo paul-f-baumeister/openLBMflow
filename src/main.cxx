@@ -42,15 +42,11 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 
 // === begin global variables
 
-// include file with initial parameters
+// include file with initial parameters, only the preprocessor macros become effective
 void empty() {
 #include "openLBMFlow_conf.c"
 } // empty
 
-int constexpr D = 3, Q = 19;
-BKG_stencil<D,Q> const stencil;
-
-// int Nx, Ny, Nz; //, NxNyNz; // local lattice sizes, NxNyNz >= Nx*Ny*Nz
 
 // === end global variables
 
@@ -118,19 +114,17 @@ template <typename real_t>
 inline void solid_cell_treatment(
       index_t const xyz
     , double const *restrict const rho // rho[nxyz]
-//     , real_t const *restrict const fn  // fn[nxyz*Q] or fn[Q*nxyz]
     , view2D<real_t> const & fn  // fn[nxyz*Q] or fn[Q*nxyz]
     , real_t       *restrict const tmp_fn // inout: tmp_fn[Q]
+    , uint8_t const *restrict const opposite
+    , int const Q
     , double const top_wall_speed
     , double const bot_wall_speed=0
-//  , stencil                          from global variables
 ) {
 
-    for (int q = 0; q < stencil.Q; ++q) {
-//         tmp_fn[q] = fn[ipop(xyz, stencil.opposite(q))]; // reflection
-        tmp_fn[q] = fn(xyz, stencil.opposite(q)); // reflection
+    for (int q = 0; q < Q; ++q) {
+        tmp_fn[q] = fn(xyz, opposite[q]); // reflection
     } // q
-
 
     if (0 != top_wall_speed) { // moving top wall (y=Ny-1, speed in x-direction)
 //      singlephase_couette_flow:      top_wall_speed == 0.5
@@ -150,10 +144,9 @@ inline index_t indexyz(int const x, int const y, int const z, int const Nx, int 
 // propagate-kernel (performance critical code section)
 template <typename real_t>
 inline void propagate(
-      int const x, int const y, int const z
+      view2D<real_t> & fn // output f(xyz, q)
     , real_t const *restrict const tmp_fn // input vector[Q]
-//  , real_t       *restrict const fn     // output
-    , view2D<real_t> & fn // output f(xyz, q)
+    , int const  x, int const  y, int const  z
     , int const Nx, int const Ny, int const Nz
 ) {
     // exploit that we can assume the local domain to be periodic
@@ -221,6 +214,7 @@ void update(
     , double       *restrict const phi=nullptr // output phase field in the case of multiphase flow
     , double const G=0 // interparticular interaction potential
 ) {
+    int constexpr Q = 19; assert(Q == stencil.Q);
     // relaxation time constant tau
     double const inv_tau = 1.0/tau;
     double const min_tau = 1.0 - inv_tau;
@@ -414,7 +408,7 @@ void update(
                     tmp_fn[q_pon] = f_pon*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
 
                     // the loops for collide and propate are merged, otherwise we would need to store tmp_fn back into fp
-                    propagate(x, y, z, tmp_fn, fn, Nx, Ny, Nz); // writes into fn, also propagates into solid boundary cells
+                    propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz); // writes into fn, also propagates into solid boundary cells
                 } // solid
             } // z
         } // y
@@ -429,8 +423,9 @@ void update(
                     // invoke propagate here, if propagate is separated from collide: copy fp into tmp_fp and call propagate(x, y, z, tmp_fp, fn)
                 } else {
                     real_t tmp_fn[Q];
-                    solid_cell_treatment(xyz, rho, fn, tmp_fn, top_wall_speed, bot_wall_speed); // reflect velocities by swapping the corresponding populations
-                    propagate(x, y, z, tmp_fn, fn, Nx, Ny, Nz);
+                    // reflect velocities by swapping the corresponding populations
+                    solid_cell_treatment(xyz, rho, fn, tmp_fn, stencil.opposite(), stencil.Q, top_wall_speed, bot_wall_speed);
+                    propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz);
                 } // solid
             } // z
         } // y
@@ -537,9 +532,10 @@ void initialize_body_force(
 
 } // initialize_body_force
 
-template <typename real_t>
+template <typename real_t, class Stencil>
 void initialize_distrFunc(
       view2D<real_t> & populations // result: mover populations(xyz,q)
+    , Stencil const & stencil
     , int const nxyz
     , char   const *restrict const solid
     , double const *restrict const rho
@@ -557,7 +553,7 @@ void initialize_distrFunc(
             double const uz_tmp = uvec[2];
 
             double const u_squared = pow2(ux_tmp) + pow2(uy_tmp) + pow2(uz_tmp);
-            for (int q = 0; q < Q; q++) {
+            for (int q = 0; q < stencil.Q; q++) {
                 auto const e = stencil.velocity(q);
                 double const vel = e[0]*ux_tmp + e[1]*uy_tmp + e[2]*uz_tmp;
                 auto const v2 = stencil.velocity_squared(q);
@@ -640,7 +636,7 @@ double outputSave(
     auto const rho_all = (save_rho) ? get_memory<real_t>(nall) : nullptr;
     auto const pre_all = (save_pre) ? get_memory<real_t>(nall) : nullptr;
     real_t* vel_all[3] = {nullptr, nullptr, nullptr};
-    for(int d = 0; d < D*save_vel; ++d) {
+    for(int d = 0; d < 3*save_vel; ++d) {
         vel_all[d] = get_memory<real_t>(nall);
     } // d
 
@@ -671,7 +667,7 @@ double outputSave(
 
     if (rho_all) delete[] rho_all;
     if (pre_all) delete[] pre_all;
-    for(int d = 0; d < D*save_vel; ++d) {
+    for(int d = 0; d < 3*save_vel; ++d) {
         if (vel_all[d]) delete[] vel_all[d];
     } // d
 
@@ -684,11 +680,9 @@ double outputSave(
 template <typename real_t> // floating point type of populations
 double run(
     int const myrank=0
-//  , Nx, Ny, Nz                            from global variables (write)
-//  , NxNyNz                                from global variables (write)
 //  , nx, ny, nz                            from global variables (read-only)
 //  , boundary_*                            from global variables (read-only)
-//  , D, Q, Q_aligned                       from global variables (read-only)
+//  , D, Q,                                 from global variables (read-only)
 //  , rhoh, rhol, rho_boundary, drop...     from global variables (read-only)
 //  , bot_wall_speed, top_wall_speed        from global variables (read-only)
 //  , total_time, time_save                 from global variables (read-only)
@@ -701,6 +695,10 @@ double run(
     int const NxNyNz = Nx*Ny*Nz; // here is some potential for memory alignment, but watch out for loop limits
     auto const NxNyNz_aligned = (((NxNyNz - 1) >> 2) + 1) << 2;
     assert(NxNyNz_aligned >= NxNyNz);
+    
+    
+    int constexpr D = 3, Q = 19;
+    BKG_stencil<D,Q> const stencil;
     
     int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
 
@@ -764,7 +762,7 @@ double run(
     double body_force_xyz[3];
     initialize_body_force(body_force_xyz, body_force, body_force_dir);
     
-    initialize_distrFunc(f0, NxNyNz, solid, rho, ux, uy, uz);
+    initialize_distrFunc(f0, stencil, NxNyNz, solid, rho, ux, uy, uz);
 
     double speed_stats[] = {0, 0, 0};
 
