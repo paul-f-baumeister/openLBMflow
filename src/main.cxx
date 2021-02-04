@@ -40,44 +40,28 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 
 #include "data_view.hxx" // view2D<T>
 
-// === begin global variables
 
 // include file with initial parameters, only the preprocessor macros become effective
 void empty() {
 #include "openLBMFlow_conf.c"
 } // empty
 
-
-// === end global variables
-
-#ifndef Lattice3D
-    #error "only 3D version available"
-#endif  
-
 #define restrict __restrict__
 
 #define wall_clock(noarg) ((double) clock()/((double) CLOCKS_PER_SEC))
 
 
-// inline index_t phindex(int const x, int const y, int const z) { return ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1); } // enlarged with a halo of thickness 1
-// int constexpr Q_aligned = Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
-
-#if 0
-inline index_t ipop(index_t const xyz, int const q) {
-    return xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
-//     return q*NxNyNz + xyz; // activate for SoA (structure of arrays) data layout
-} // ipop
-#endif
-
 #define phindex(x,y,z) ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1) // enlarged with a halo of thickness 1
 
-#ifdef MultiPhase
 template <typename real_t>
 void transfer_phi_halos(
-      real_t *restrict const phi
-    , int const Nx, int const Ny, int const Nz
-) {
-
+      real_t *restrict const phi // modified
+    , int const Nx
+    , int const Ny
+    , int const Nz
+) 
+    // only used in multiphase case
+{
     int const Np[] = {Nx, Ny, Nz};
     // ============================================================================================
     // these operations may not be reordered or performed in parallel!
@@ -108,14 +92,13 @@ void transfer_phi_halos(
     } // dir
 
 } // transfer_phi_halos
-#endif // MultiPhase
 
 template <typename real_t>
-inline void solid_cell_treatment(
+inline void solid_cell_treatment( // ToDo: reorder argument list
       index_t const xyz
-    , double const *restrict const rho // rho[nxyz]
+    , double const  *restrict const rho // rho[nxyz]
     , view2D<real_t> const & fn  // fn[nxyz*Q] or fn[Q*nxyz]
-    , real_t       *restrict const tmp_fn // inout: tmp_fn[Q]
+    , real_t        *restrict const tmp_fn // inout: tmp_fn[Q]
     , uint8_t const *restrict const opposite
     , int const Q
     , double const top_wall_speed
@@ -126,15 +109,16 @@ inline void solid_cell_treatment(
         tmp_fn[q] = fn(xyz, opposite[q]); // reflection
     } // q
 
+    double constexpr sixth = 1/6.;
     if (0 != top_wall_speed) { // moving top wall (y=Ny-1, speed in x-direction)
 //      singlephase_couette_flow:      top_wall_speed == 0.5
 //      singlephase_lid_driven_cavity: top_wall_speed == 0.5
-        tmp_fn[q_nno] -= top_wall_speed*(rho[xyz]/6.);
-        tmp_fn[q_pno] += top_wall_speed/(rho[xyz]*6.);
+        tmp_fn[q_nno] -= top_wall_speed*sixth*rho[xyz];
+        tmp_fn[q_pno] += top_wall_speed*sixth/rho[xyz];
     } // top wall speed
     if (0 != bot_wall_speed) { // moving bottom wall (y=0, speed in x-direction)
-        tmp_fn[q_ppo] += bot_wall_speed*(rho[xyz]/6.);
-        tmp_fn[q_npo] -= bot_wall_speed/(rho[xyz]*6.);
+        tmp_fn[q_ppo] += bot_wall_speed*sixth*rho[xyz];
+        tmp_fn[q_npo] -= bot_wall_speed*sixth/rho[xyz];
     } // bottom wall speed
 
 } // solid_cell_treatment
@@ -286,7 +270,7 @@ void update(
                                     + (f_opp - f_onn)
                                     + (f_onp - f_opn) )*inv_rho;
  
-                    // add the body force
+                    // add the body force (can this be moved into the second loop?)
                     tmp_ux += tau*body_force_xyz[0];
                     tmp_uy += tau*body_force_xyz[1];
                     tmp_uz += tau*body_force_xyz[2];
@@ -321,13 +305,35 @@ void update(
                     double grad_phi_x = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
                     double grad_phi_y = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
                     double grad_phi_z = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
-                    // every phi value is used twice, maybe buffer them
-                    grad_phi_x += (ph(x+1, y+1, z) - ph(x-1, y+1, z) + ph(x+1, y-1, z) - ph(x-1, y-1, z))*inv_w2;
-                    grad_phi_y += (ph(x+1, y+1, z) + ph(x-1, y+1, z) - ph(x-1, y-1, z) - ph(x+1, y-1, z))*inv_w2;
-                    grad_phi_z += (ph(x+1, y, z+1) + ph(x-1, y, z+1) - ph(x-1, y, z-1) - ph(x+1, y, z-1))*inv_w2;
-                    grad_phi_x += (ph(x+1, y, z+1) - ph(x-1, y, z+1) + ph(x+1, y, z-1) - ph(x-1, y, z-1))*inv_w2;
-                    grad_phi_y += (ph(x, y+1, z+1) + ph(x, y+1, z-1) - ph(x, y-1, z+1) - ph(x, y-1, z-1))*inv_w2;
-                    grad_phi_z += (ph(x, y+1, z+1) + ph(x, y-1, z+1) - ph(x, y-1, z-1) - ph(x, y+1, z-1))*inv_w2;
+                    // every phi value is used twice, buffer them
+                    double const ph_ppo = ph(x+1, y+1, z);
+                    double const ph_npo = ph(x-1, y+1, z);
+                    double const ph_pno = ph(x+1, y-1, z);
+                    double const ph_nno = ph(x-1, y-1, z);
+
+                    double const ph_pop = ph(x+1, y, z+1);
+                    double const ph_nop = ph(x-1, y, z+1);
+                    double const ph_pon = ph(x+1, y, z-1);
+                    double const ph_non = ph(x-1, y, z-1);
+                    
+                    double const ph_opp = ph(x, y+1, z+1);
+                    double const ph_onp = ph(x, y-1, z+1);
+                    double const ph_opn = ph(x, y+1, z-1);
+                    double const ph_onn = ph(x, y-1, z-1);
+
+                    grad_phi_x += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
+                    grad_phi_y += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
+                    grad_phi_z += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
+                    grad_phi_x += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
+                    grad_phi_y += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
+                    grad_phi_z += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
+
+//                     grad_phi_x += (ph(x+1, y+1, z) - ph(x-1, y+1, z) + ph(x+1, y-1, z) - ph(x-1, y-1, z))*inv_w2;
+//                     grad_phi_y += (ph(x+1, y+1, z) + ph(x-1, y+1, z) - ph(x-1, y-1, z) - ph(x+1, y-1, z))*inv_w2;
+//                     grad_phi_z += (ph(x+1, y, z+1) + ph(x-1, y, z+1) - ph(x-1, y, z-1) - ph(x+1, y, z-1))*inv_w2;
+//                     grad_phi_x += (ph(x+1, y, z+1) - ph(x-1, y, z+1) + ph(x+1, y, z-1) - ph(x-1, y, z-1))*inv_w2;
+//                     grad_phi_y += (ph(x, y+1, z+1) + ph(x, y+1, z-1) - ph(x, y-1, z+1) - ph(x, y-1, z-1))*inv_w2;
+//                     grad_phi_z += (ph(x, y+1, z+1) + ph(x, y-1, z+1) - ph(x, y-1, z-1) - ph(x, y+1, z-1))*inv_w2;
           #undef ph // abbreviation
 
                     // interparticular potential in equilibrium velocity
@@ -688,6 +694,9 @@ double run(
 //  , rhoh, rhol, rho_boundary, drop...     from global variables (read-only)
 //  , bot_wall_speed, top_wall_speed        from global variables (read-only)
 //  , total_time, time_save                 from global variables (read-only)
+#ifndef Lattice3D
+    #error "only 3D version available"
+#endif  
     
     
     int const Nx = nx;
