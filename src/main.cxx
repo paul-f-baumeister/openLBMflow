@@ -512,15 +512,14 @@ void initialize_density(
 
 template <typename real_t>
 void initialize_distrFunc(
-//       real_t *restrict const f  // f[nx*ny*nz*Q_aligned] mover populations
-      view2D<real_t> & populations // mover populations
+      view2D<real_t> & populations // result: mover populations(xyz,q)
+    , double body_force_xyz[3] // result: body force
+    , int const nxyz
     , char const *restrict const solid
     , double const *restrict const rho
     , double *restrict const ux
     , double *restrict const uy
     , double *restrict const uz
-    , double body_force_xyz[3]
-//  , Nx*Ny*Nz             from global variables
 ) {
 
     // set body_force vector (global variable body_force_xyz)
@@ -531,7 +530,7 @@ void initialize_distrFunc(
 
     double const uvec[3] = {0, 0, 0}; // input current
 
-    for (index_t xyz = 0; xyz < Nx*Ny*Nz; ++xyz) {
+    for (index_t xyz = 0; xyz < nxyz; ++xyz) {
         if (!solid[xyz]) {
             double const rho_tmp = rho[xyz];
             double const ux_tmp = uvec[0];
@@ -542,13 +541,11 @@ void initialize_distrFunc(
             for (int q = 0; q < Q; q++) {
                 auto const e = stencil.velocity(q);
                 double const vel = e[0]*ux_tmp + e[1]*uy_tmp + e[2]*uz_tmp;
-//                auto const v2 = e[3];
                 auto const v2 = stencil.velocity_squared(q);
                 assert(v2 == pow2(e[0]) + pow2(e[1]) + pow2(e[2]));
                 double const weight = stencil.weight(v2);
 //              double const feq = 0.5*weight*rho_tmp*(2 + 6*vel + 9*pow2(vel) - 3*u_squared);
                 double const feq = stencil.equilibrium(0.5*weight*rho_tmp, vel, u_squared);
-//                 f[ipop(xyz, q)] = feq;
                 populations(xyz, q) = feq;
             } // q
 
@@ -723,7 +720,7 @@ double run(
     double body_force_xyz[3];
 //     ipop(xyz, q): xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
     view2D<real_t> pop0(f0, Q_aligned); // warp
-    initialize_distrFunc(pop0, solid, rho, ux, uy, uz, body_force_xyz);
+    initialize_distrFunc(pop0, body_force_xyz, NxNyNz, solid, rho, ux, uy, uz);
 //     initialize_distrFunc(f0, solid, rho, ux, uy, uz, body_force_xyz);
 
     double speed_stats[] = {0, 0, 0};
