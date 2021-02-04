@@ -1,4 +1,4 @@
-// c++ -std=c++11 diff_vti_files_numerically.cxx -o numdiff
+// c++ -std=c++11 numdiff_for_vti_files.cxx -o numdiff
 // use rapidxml
 
 // from https://sourceforge.net/projects/rapidxml/files/latest/download
@@ -55,8 +55,9 @@
         for (double f = std::strtod(seq, &end); seq != end; f = std::strtod(seq, &end)) {
             seq = end;
             if (errno == ERANGE){
-                std::fprintf(stderr, "range error, got %g", f);
+                std::fprintf(stderr, "range error, got %g\n", f);
                 errno = 0;
+                v.push_back(real_t(0));
             } else {
                 v.push_back(real_t(f));
             }
@@ -116,7 +117,7 @@
             auto const array_name = find_attribute(DataArray, "Name");
             auto const n_components = find_attribute(DataArray, "NumberOfComponents");
             auto const ncomp = std::atoi(n_components);
-            print("# %d component%c in array '%s'\n", ncomp, (ncomp != 1)*'s', array_name);
+            print("# %d component%s in array '%s'\n", ncomp, (ncomp != 1)?"s":"", array_name);
             auto const values = DataArray->value();
             // print("# values: %s\n", values); // this can be very long
             auto const array = read_sequence<real_t>(values, 1.125*total*ncomp);
@@ -154,11 +155,15 @@
         , FILE* log
         , int const ncomp=1
     ) {
+        if (nullptr == array_now || nullptr == array_ref) return;
+//         print("# analyse %s with %d components\n", name, ncomp);
         for(int icomp = 0; icomp < ncomp; ++icomp) {
             double ddev[] = {0, 0, 0, 9e33, -9e33};
             double adev[] = {0, 0, 0, 9e33, -9e33};
             double rdev[] = {0, 0, 0, 9e33, -9e33};
+//             print("# analyse component %i of %s\n", icomp, name);
             for(size_t i = 0; i < n; ++i) {
+//                 print("# analyse entry %li of %s\n", i, name);
                 int const j = i*ncomp + icomp;
                 auto const ref = array_ref[j];
                 auto const now = array_now[j];
@@ -172,7 +177,7 @@
                 add_stats(dif, ddev);
                 add_stats(abs, adev);
             } // i
-            char dir[4]; dir[0] = '-'*(ncomp > 1); dir[1] = 'x' + icomp; dir[2] = 0;
+            char dir[4]; dir[0] = '-'*(ncomp > 1); dir[1] = 'x' + icomp; dir[2] = '\0';
             print("# for array '%s%s':\n", name, dir);
             show_stats(ddev, log, "   plain difference");
             show_stats(adev, log, "absolute difference");
@@ -185,8 +190,11 @@ int main(int argc, char *argv[]) {
     auto const filename_ref = argv[1];
     auto const filename_now = argv[2];
 
-    auto const log = nullptr; // stderr;
+//     auto const log = nullptr; // stderr;
+    auto const log = stderr;
+    print("\n# read file %s\n", filename_ref);
     auto const ref = read_VTK_file(filename_ref, log);
+    print("\n# read file %s\n", filename_now);
     auto const now = read_VTK_file(filename_now, log);
     auto const n = ref.n;
     assert(   n == now.n);
@@ -195,5 +203,6 @@ int main(int argc, char *argv[]) {
     analyse_deviation(now.density.data(),  ref.density.data(),  n, "Density",  out);
     analyse_deviation(now.pressure.data(), ref.pressure.data(), n, "Pressure", out);
     analyse_deviation(now.velocity.data(), ref.velocity.data(), n, "Velocity", out, 3);
+    if (out) std::fprintf(out, "# compared files %s and %s\n", filename_ref, filename_now);
 
 } // main

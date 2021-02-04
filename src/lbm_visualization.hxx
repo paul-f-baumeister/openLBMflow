@@ -18,7 +18,7 @@ namespace lbm_visualization {
       , int const time_save=1
   ) {
       int const dir = mkdir(directory, 0777); // delete the second argument in WIN32
-      // if (0 == dir) printf("Error: Cannot create output directory!\n");
+      if (false && (0 == dir)) printf("Error: Cannot create output directory!\n");
       char fName[256];
       std::snprintf(fName, 255, "%s/%s.pvd", directory, filename);
       auto const f = std::fopen(fName,"w");
@@ -48,7 +48,7 @@ namespace lbm_visualization {
       , real_t const uz[]=nullptr
   ) { // file
       int const dir = mkdir(directory, 0777); // delete the second argument in WIN32
-      if (0 == dir) printf("Error: Can't create output directory!\n");
+      if (false && (0 == dir)) printf("Error: Cannot create output directory!\n");
       char datafilename[256];
       std::snprintf(datafilename, 255, "%s/%s_%07d.vti", directory, filename, time);
       auto const f = std::fopen(datafilename, "w");

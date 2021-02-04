@@ -67,10 +67,9 @@ inline index_t ipop(index_t const xyz, int const q) {
 //     return q*NxNyNz + xyz; // activate for SoA (structure of arrays) data layout
 } // ipop
 
+#define phindex(x,y,z) ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1) // enlarged with a halo of thickness 1
+
 #ifdef MultiPhase
-
-  #define phindex(x,y,z) ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1) // enlarged with a halo of thickness 1
-
 template <typename real_t>
 void transfer_phi_halos(
       real_t *restrict const phi
@@ -205,9 +204,9 @@ void update(
     , double       *restrict const uy // output macroscopic velocities
     , double       *restrict const uz
     , int const Nx, int const Ny, int const Nz
+    , double const top_wall_speed, double const bot_wall_speed
     , double       *restrict const phi=nullptr // output phase field in the case of multiphase flow
 //  , stencil                               from global variables
-//  , top_wall_speed, bot_wall_speed        from global variables
 ) {
     // relaxation time constant tau
     double const inv_tau = 1.0/tau;
@@ -217,9 +216,9 @@ void update(
                  half_wi2 = 0.5*stencil.weight(2);
 
     // calculate rho, ux, uy, uz and phi
-    for (int x = 0; x < Nx; x++) {
-        for (int y = 0; y < Ny; y++) {
-            for (int z = 0; z < Nz; z++) {
+    for (int x = 0; x < Nx; ++x) {
+        for (int y = 0; y < Ny; ++y) {
+            for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
                     // load
@@ -300,9 +299,9 @@ void update(
 
     double const inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
 
-    for (int x = 0; x < Nx; x++) {
-        for (int y = 0; y < Ny; y++) {
-            for (int z = 0; z < Nz; z++) {
+    for (int x = 0; x < Nx; ++x) {
+        for (int y = 0; y < Ny; ++y) {
+            for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
 
@@ -407,9 +406,9 @@ void update(
     } // x
 
     // we have to treat the solid cells since some velocities may have penetrated them
-    for (int x = 0 ; x < Nx; x++) {
-        for (int y = 0; y < Ny; y++) {
-            for (int z = 0; z < Nz; z++) {
+    for (int x = 0 ; x < Nx; ++x) {
+        for (int y = 0; y < Ny; ++y) {
+            for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
                     // invoke propagate here, if propagate is separated from collide: copy fp into tmp_fp and call propagate(x, y, z, tmp_fp, fn)
@@ -434,7 +433,7 @@ void update(
 template <typename real_t>
 void initialize_boundary(
       int    const boundary[3][2]
-    , double const rho_boundary
+    , double const rho_solid
     , char   *restrict const solid
     , real_t *restrict const rho
     , real_t *restrict const ux
@@ -442,8 +441,6 @@ void initialize_boundary(
     , real_t *restrict const uz
     , int const Nx, int const Ny, int const Nz
     , double const wall_speed[3][2] // lef,rig,bot,top,fro,bac
-    , double const rhoh
-    , double const rhol
 ) {
 
     // initialize type of cells
@@ -451,61 +448,52 @@ void initialize_boundary(
         assert(0 == solid[xyz]);
     } // xyz
 
-    double const rho_solid = rho_boundary*(rhoh - rhol) + rhol;
-    
     // define Half way Bounce Back Boundary condition
-    { // scope: y-direction
-        int constexpr dir = 1;
-        for (int x = 0; x < Nx; x++) {
-            for (int z = 0; z < Nz; z++) {
-                for(int lu = 0; lu < 2; ++lu) { // {0:lower, 1:upper}
-                    if (0 < boundary[dir][0]) {
-                        index_t const xyz = indexyz(x, lu*(Ny - 1), z); // node on bottom boundary, y==min
+    for (int lu = 0; lu <= 1; ++lu) { // {0:lower, 1:upper}
+      
+        {   int constexpr dir = 0; // x-direction (left/right)
+            if (boundary[dir][lu] > 0) {
+                for (int y = 0; y < Ny; ++y) {
+                    for (int z = 0; z < Nz; ++z) {
+                        index_t const xyz = indexyz(lu*(Nx - 1), y, z); // node on left/right boundary, x==min/max
+                        solid[xyz] = 3 + lu;
+                        rho[xyz] = rho_solid;
+                    } // z
+                } // y
+            } // boundary
+        } // x-direction
+
+        {   int constexpr dir = 1; // y-direction (down/up)
+            if (boundary[dir][lu] > 0) {
+                for (int x = 0; x < Nx; ++x) {
+                    for (int z = 0; z < Nz; ++z) {
+                        index_t const xyz = indexyz(x, lu*(Ny - 1), z); // node on bottom/top boundary, y==min/max
                         solid[xyz] = 1 + lu;
                         rho[xyz] = rho_solid;
-                        if (0 != wall_speed[dir][lu]) { ux[xyz] = wall_speed[dir][lu]; uy[xyz] = 0; uz[xyz] = 0; }
-                    } // boundary
-                } // lu
-                
-//                 if (0 < boundary[Y][1]) {
-//                     index_t const xyz = indexyz(x, Ny - 1, z); // node on top boundary, y==max
-//                     solid[xyz] = 2;
-//                     rho[xyz] = rho_solid;
-//                     if (0 != top_wall_speed) { ux[xyz] = top_wall_speed; uy[xyz] = 0; uz[xyz] = 0; }
-//                 }
-            } // z
-        } // x
-    } // scope: y-direction
+                        // specialty of the y-direction:
+                        if (0 != wall_speed[dir][lu]) {
+                            ux[xyz] = wall_speed[dir][lu];
+                            uy[xyz] = 0;
+                            uz[xyz] = 0;
+                        } // wall_speed flowing in x-direction
+                    } // z
+                } // x
+            } // boundary
+        } // y-direction
 
-    for (int y = 0; y < Ny; y++) {
-        for (int z = 0; z < Nz; z++) {
-            if (0 < boundary[0][0]) {
-                index_t const xyz = indexyz(0, y, z); // node on left boundary, x==min
-                solid[xyz] = 3;
-                rho[xyz] = rho_solid;
-            } 
-            if (0 < boundary[0][1]) {
-                index_t const xyz = indexyz(Nx - 1, y, z); // node on right boundary, x==max
-                solid[xyz] = 4;
-                rho[xyz] = rho_solid;
-            }
-        } // z
-    } // y
+        {   int constexpr dir = 2; // z-direction (front/back)
+            if (boundary[dir][lu] > 0) {
+                for (int x = 0; x < Nx; ++x) {
+                    for (int y = 0; y < Ny; ++y) {
+                        index_t const xyz = indexyz(x, y, lu*(Nz - 1)); // node on front/back boundary, z==min/max
+                        solid[xyz] = 5 + lu;
+                        rho[xyz] = rho_solid;
+                    } // y
+                } // x
+            } // boundary
+        } // z-direction
 
-    for (int x = 0; x < Nx; x++) {
-        for (int y = 0; y < Ny; y++) {
-            if (0 < boundary[2][0]) {
-                index_t const xyz = indexyz(x, y, 0); // node on front boundary, z==min
-                solid[xyz] = 5;
-                rho[xyz] = rho_solid;
-            }
-            if (0 < boundary[2][1]) {
-                index_t const xyz = indexyz(x, y, Nz - 1); // node on back boundary, z==max
-                solid[xyz] = 6;
-                rho[xyz] = rho_solid;
-            }
-        } // y
-    } // x
+    } // lu
 
 } // initialize_boundary
 
@@ -581,9 +569,9 @@ void initialize_droplet(
 ) {
     auto const rho_diff = (rho_high - rho_low)*drop;
     auto const rho_sum  =  rho_high + rho_low;
-    for (int x = 0; x < Nx; x++) {
-        for (int y = 0; y < Ny; y++) {
-            for (int z = 0; z < Nz; z++) {
+    for (int x = 0; x < Nx; ++x) {
+        for (int y = 0; y < Ny; ++y) {
+            for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z);
                 if (!solid[xyz]) {
                     auto const radius = std::sqrt(pow2(x - dx) + pow2(y - dy) + pow2(z - dz));
@@ -631,9 +619,9 @@ double outputSave(
         vel_all[d] = get_memory<real_t>(nall);
     } // d
 
-    for (int x = 0; x < Nx; x++) {
-        for (int y = 0; y < Ny; y++) {
-            for (int z = 0; z < Nz; z++) {
+    for (int x = 0; x < Nx; ++x) {
+        for (int y = 0; y < Ny; ++y) {
+            for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z); // local index into rho, ux, uy, uz
                 size_t const gxyz = ((x + offs[0])*ny + (y + offs[1]))*nz + (z + offs[2]); // global index
                 if (save_rho) rho_all[gxyz] = rho[xyz];
@@ -719,7 +707,8 @@ double run(
                                  {boundary_fro, boundary_bac} };
     double const wall_speed[3][2] = { {0, 0}, {bot_wall_speed, top_wall_speed}, {0, 0} };
 
-    initialize_boundary(boundary, rho_boundary, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed, rhoh, rhol);
+    double const rho_solid = rho_boundary*(rhoh - rhol) + rhol;
+    initialize_boundary(boundary, rho_solid, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed);
 
     initialize_density(rho, solid, rhol); // low density value
 
@@ -756,8 +745,8 @@ double run(
         } // measure and dump data as .vti files
 
         // calculate the distribution function for the next two time steps
-        update(solid, body_force_xyz, f0, f1, rho, ux, uy, uz, Nx, Ny, Nz, phi);
-        update(solid, body_force_xyz, f1, f0, rho, ux, uy, uz, Nx, Ny, Nz, phi);
+        update(solid, body_force_xyz, f0, f1, rho, ux, uy, uz, Nx, Ny, Nz, top_wall_speed, bot_wall_speed, phi);
+        update(solid, body_force_xyz, f1, f0, rho, ux, uy, uz, Nx, Ny, Nz, top_wall_speed, bot_wall_speed, phi);
     } // t
 
 #ifndef SuppressIO
