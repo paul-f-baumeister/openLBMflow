@@ -43,7 +43,9 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 // === begin global variables
 
 // include file with initial parameters
+void empty() {
 #include "openLBMFlow_conf.c"
+} // empty
 
 int constexpr D = 3, Q = 19;
 BKG_stencil<D,Q> const stencil;
@@ -676,6 +678,8 @@ double outputSave(
     timer_start = wall_clock(); // start internal timer again
     return Speed;
 } // outputSave
+
+#include "openLBMFlow_conf.c"
 
 template <typename real_t> // floating point type of populations
 double run(
