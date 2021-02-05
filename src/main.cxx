@@ -124,7 +124,10 @@ inline void solid_cell_treatment( // ToDo: reorder argument list
 
 } // solid_cell_treatment
 
-inline index_t indexyz(int const x, int const y, int const z, int const Nx, int const Ny, int const Nz) { return (x*Ny + y)*Nz + z; }
+inline index_t indexyz(int const x, int const y, int const z
+                  , int const Nx, int const Ny, int const Nz)
+                      { return (z*Ny + y)*Nx + x; }
+//                    { return (x*Ny + y)*Nz + z; }
 
 // propagate-kernel (performance critical code section)
 template <typename real_t>
