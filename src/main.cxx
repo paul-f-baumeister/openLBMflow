@@ -208,9 +208,9 @@ void update(
 
 #ifdef MultiPhase
     // update rho to calculate phi
-    for (int x = 0; x < Nx; ++x) {
-        for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
+        for (int y = 0; y < Ny; ++y) {
+    for (int x = 0; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
 

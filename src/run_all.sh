@@ -35,9 +35,14 @@ for path in \
     ## run and compare
     ./LBMflow && \
     ../tools/numdiff  ./output/openLBMflow_0000200.vti \
-            ../$path/reference/openLBMflow_0000200.vti
+                   ./ref/$path/openLBMflow_0000200.vti
+#             ../$path/reference/openLBMflow_0000200.vti
     echo $path
     echo
+
+    ## save copy
+#     mkdir -p ./ref/$path
+#     mv ./output/openLBMflow_0000200.vti ./ref/$path
 
 done
 
