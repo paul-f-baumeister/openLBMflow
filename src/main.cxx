@@ -207,49 +207,51 @@ void update(
                  half_wi1 = 0.5*stencil.weight(1),
                  half_wi2 = 0.5*stencil.weight(2);
 
-#ifdef MultiPhase
-    // update rho to calculate phi
-    assert(nullptr != phi);
 
-    for (int z = 0; z < Nz; ++z) {
-        for (int y = 0; y < Ny; ++y) {
-            for (int x = 0; x < Nx; ++x) {
-                index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                if (!solid[xyz]) {
+    if (multiphase) {
+        // update rho to calculate phi
+        assert(nullptr != phi);
 
-                    auto const fp = f_previous[xyz]; // get a 1D subview
-                    // calculate only rho
+        for (int z = 0; z < Nz; ++z) {
+            for (int y = 0; y < Ny; ++y) {
+                for (int x = 0; x < Nx; ++x) {
+                    index_t const xyz = indexyz(x, y, z, Nx, Ny);
+                    if (!solid[xyz]) {
+
+                        auto const fp = f_previous[xyz]; // get a 1D subview
+                        // calculate only rho
 // #define ALLOW_DEVIATIONS
 #ifndef ALLOW_DEVIATIONS
-                    double const tmp_rho = double(fp[q_ooo])
-                                    + (double(fp[q_poo]) + double(fp[q_noo])) 
-                                    + (double(fp[q_opo]) + double(fp[q_ono]))
-                                    + (double(fp[q_oop]) + double(fp[q_oon]))
-                                    
-                                    + (double(fp[q_opp]) + double(fp[q_onn]))
-                                    + (double(fp[q_onp]) + double(fp[q_opn]))
-                                    + (double(fp[q_pop]) + double(fp[q_non]))
-                                    + (double(fp[q_nop]) + double(fp[q_pon]))
-                                    + (double(fp[q_ppo]) + double(fp[q_nno]))
-                                    + (double(fp[q_npo]) + double(fp[q_pno]));
+                        double const tmp_rho = double(fp[q_ooo])
+                                        + (double(fp[q_poo]) + double(fp[q_noo])) 
+                                        + (double(fp[q_opo]) + double(fp[q_ono]))
+                                        + (double(fp[q_oop]) + double(fp[q_oon]))
+                                        
+                                        + (double(fp[q_opp]) + double(fp[q_onn]))
+                                        + (double(fp[q_onp]) + double(fp[q_opn]))
+                                        + (double(fp[q_pop]) + double(fp[q_non]))
+                                        + (double(fp[q_nop]) + double(fp[q_pon]))
+                                        + (double(fp[q_ppo]) + double(fp[q_nno]))
+                                        + (double(fp[q_npo]) + double(fp[q_pno]));
 #else  // ALLOW_DEVIATIONS
-                    // if we allow some deviations, it can be written much shorter 
-                    //          and much more flexible w.r.t. different stencils:
-                    double tmp_rho{0};
-                    for(int q = 0; q < Q; ++q) {
-                        tmp_rho += double(fp[q]);
-                    } // q
+                        // if we allow some deviations, it can be written much shorter 
+                        //          and much more flexible w.r.t. different stencils:
+                        double tmp_rho{0};
+                        for(int q = 0; q < Q; ++q) {
+                            tmp_rho += double(fp[q]);
+                        } // q
 #endif // ALLOW_DEVIATIONS
-                    rho[xyz] = tmp_rho; // store density
-                } // solid
-                phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); // calculate interparticular force in multiphase Shan-Chen model
-           } // x
-       } // y
-    } // z
+                        rho[xyz] = tmp_rho; // store density
+                    } // solid
+                    // calculate interparticular force in multiphase Shan-Chen model
+                    phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); 
+              } // x
+          } // y
+        } // z
 
-    transfer_phi_halos(phi, Nx, Ny, Nz); // make the halo-enlarged array periodic
+        transfer_phi_halos(phi, Nx, Ny, Nz); // make the halo-enlarged array periodic
 
-#endif // MultiPhase
+    } // multiphase
 
     for (int z = 0; z < Nz; ++z) {
         for (int y = 0; y < Ny; ++y) {
@@ -257,42 +259,43 @@ void update(
                 index_t const xyz = indexyz(x, y, z, Nx, Ny);
                 if (!solid[xyz]) {
   
-#ifdef MultiPhase
-                    double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
+                double grad_phi_x{0}, grad_phi_y{0}, grad_phi_z{0}, tmp_phi;
+                if (multiphase) {
+                        double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
 
-          #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
+                    #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
 
-                    double const tmp_phi = ph(x, y, z);
-                    // calculate phi-gradients
-                    double grad_phi_x = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
-                    double grad_phi_y = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
-                    double grad_phi_z = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
+                        tmp_phi = ph(x, y, z);
+                        // calculate phi-gradients
+                        grad_phi_x = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
+                        grad_phi_y = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
+                        grad_phi_z = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
 
-                    // in the next three sections, every phi value is used twice
-                    double const ph_ppo = ph(x+1, y+1, z);
-                    double const ph_npo = ph(x-1, y+1, z);
-                    double const ph_pno = ph(x+1, y-1, z);
-                    double const ph_nno = ph(x-1, y-1, z);
-                    grad_phi_x += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
-                    grad_phi_y += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
+                        // in the next three sections, every phi value is used twice
+                        double const ph_ppo = ph(x+1, y+1, z);
+                        double const ph_npo = ph(x-1, y+1, z);
+                        double const ph_pno = ph(x+1, y-1, z);
+                        double const ph_nno = ph(x-1, y-1, z);
+                        grad_phi_x += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
+                        grad_phi_y += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
 
-                    double const ph_pop = ph(x+1, y, z+1);
-                    double const ph_nop = ph(x-1, y, z+1);
-                    double const ph_pon = ph(x+1, y, z-1);
-                    double const ph_non = ph(x-1, y, z-1);
-                    grad_phi_z += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
-                    grad_phi_x += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
-                    
-                    double const ph_opp = ph(x, y+1, z+1);
-                    double const ph_onp = ph(x, y-1, z+1);
-                    double const ph_opn = ph(x, y+1, z-1);
-                    double const ph_onn = ph(x, y-1, z-1);
-                    grad_phi_y += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
-                    grad_phi_z += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
+                        double const ph_pop = ph(x+1, y, z+1);
+                        double const ph_nop = ph(x-1, y, z+1);
+                        double const ph_pon = ph(x+1, y, z-1);
+                        double const ph_non = ph(x-1, y, z-1);
+                        grad_phi_z += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
+                        grad_phi_x += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
+                        
+                        double const ph_opp = ph(x, y+1, z+1);
+                        double const ph_onp = ph(x, y-1, z+1);
+                        double const ph_opn = ph(x, y+1, z-1);
+                        double const ph_onn = ph(x, y-1, z-1);
+                        grad_phi_y += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
+                        grad_phi_z += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
 
-          #undef ph // abbreviation
+                    #undef ph // abbreviation
 
-#endif // MultiPhase
+                    } // multiphase
 
 
                     // load
@@ -354,19 +357,19 @@ void update(
                                     + (f_opp - f_onn)
                                     + (f_onp - f_opn) )*inv_rho;
                                     
-#ifdef MultiPhase
+                    if (multiphase) {
 
-    #ifndef ALLOW_DEVIATIONS
-                    assert(tmp_rho == rho[xyz]);
-    #endif // ALLOW_DEVIATIONS
+        #ifndef ALLOW_DEVIATIONS
+                        assert(tmp_rho == rho[xyz]);
+        #endif // ALLOW_DEVIATIONS
 
-                    // interparticular potential in equilibrium velocity
-                    // load current directions
-                    tmp_ux -= tau*(G*tmp_phi*grad_phi_x)*inv_rho;
-                    tmp_uy -= tau*(G*tmp_phi*grad_phi_y)*inv_rho;
-                    tmp_uz -= tau*(G*tmp_phi*grad_phi_z)*inv_rho;
+                        // interparticular potential in equilibrium velocity
+                        // load current directions
+                        tmp_ux -= tau*(G*tmp_phi*grad_phi_x)*inv_rho;
+                        tmp_uy -= tau*(G*tmp_phi*grad_phi_y)*inv_rho;
+                        tmp_uz -= tau*(G*tmp_phi*grad_phi_z)*inv_rho;
                                     
-#endif // MultiPhase
+                    } // multiphase
 
                     // add the body force (now in the second loop?)
                     tmp_ux += tau*body_force_xyz[0];
