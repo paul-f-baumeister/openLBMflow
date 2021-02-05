@@ -179,7 +179,8 @@ void update(
     , BKG_stencil<3,19> const & stencil
     , double const tau
     , int const Nx, int const Ny, int const Nz
-    , char   const *restrict const solid
+//     , char   const *restrict const solid
+    , CellInfo const *restrict const solid
     , double const body_force[3]
     , double const top_wall_speed
     , double const bot_wall_speed
@@ -203,7 +204,7 @@ void update(
             for (int y = 0; y < Ny; ++y) {
                 for (int x = 0; x < Nx; ++x) {
                     index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                    if (!solid[xyz]) {
+                    if (!solid[xyz].is_solid()) {
 
                         auto const fp = f_previous[xyz]; // get a 1D subview
                         // calculate only rho
@@ -244,7 +245,7 @@ void update(
         for (int y = 0; y < Ny; ++y) {
             for (int x = 0; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                if (!solid[xyz]) {
+                if (!solid[xyz].is_solid()) {
   
                     double G_phi_grad_phi[3];
                     if (multiphase) {
@@ -428,7 +429,7 @@ void update(
         for (int y = 0; y < Ny; ++y) {
             for (int x = 0 ; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                if (!solid[xyz]) {
+                if (!solid[xyz].is_solid()) {
                     // invoke propagate here, if propagate is separated from collide: copy fp into tmp_fp and call propagate(x, y, z, tmp_fp, fn)
                 } else {
                     real_t tmp_fn[Q];
@@ -487,8 +488,8 @@ double run(
                 t_mem/double(1ull << 30), stencil.D, stencil.Q, nx, ny, nz);
 
     // cell info
-    auto const solid = get_memory<char>(NzNyNx); // one Byte per cell
-
+//     auto const solid = get_memory<char>(NzNyNx); // one Byte per cell
+    auto const solid = get_memory<CellInfo>(NzNyNx, 0); // one Byte per cell
 
     // observables
     // ToDo: group together into a view2D<double> that can be switched between SoA[4][NzNyNx_aligned] and AoS[NzNyNx][4];
@@ -505,7 +506,7 @@ double run(
     double const wall_speed[3][2] = { {0, 0}, {bot_wall_speed, top_wall_speed}, {0, 0} };
 
     double const rho_solid = rho_boundary*(rhoh - rhol) + rhol;
-    lbm_initialize::initialize_boundary(boundary, rho_solid, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed);
+    lbm_initialize::initialize_boundary(solid, rho, ux, uy, uz, boundary, rho_solid, Nx, Ny, Nz, wall_speed);
 
     lbm_initialize::initialize_density(rho, solid, rhol, NzNyNx); // low density value
     

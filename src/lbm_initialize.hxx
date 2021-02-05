@@ -21,22 +21,22 @@ namespace lbm_initialize {
       body_force_xyz[2] =  0;
 
   } // initialize_body_force
-  
+
   template <typename real_t, class Stencil>
   void initialize_distrFunc(
         view2D<real_t> & populations // result: mover populations(xyz,q)
       , Stencil const & stencil
       , int const NzNyNx
-      , char   const *restrict const solid
+      , CellInfo const solid[]
+//    , char   const *restrict const solid
       , double const *restrict const rho
       , double const *restrict const ux
       , double const *restrict const uy
       , double const *restrict const uz
   ) {
-  //     double const uvec[3] = {0, 0, 0}; // input current
 
       for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
-          if (!solid[xyz]) {
+          if (!solid[xyz].is_solid()) {
               double const rho_tmp = rho[xyz];
               double const ux_tmp = ux[xyz];
               double const uy_tmp = uy[xyz]; // here, a more complex flow field could be initialized
@@ -62,20 +62,21 @@ namespace lbm_initialize {
   
   template <typename real_t>
   void initialize_boundary(
-        int    const boundary[3][2]
-      , double const rho_solid
-      , char   *restrict const solid
+        CellInfo solid[]
+//      char   *restrict const solid
       , real_t *restrict const rho
       , real_t *restrict const ux
       , real_t *restrict const uy
       , real_t *restrict const uz
+      , int    const boundary[3][2]
+      , double const rho_solid
       , int const Nx, int const Ny, int const Nz
       , double const wall_speed[3][2] // lef,rig,bot,top,fro,bac
   ) {
 
       // initialize type of cells
       for (index_t xyz = 0; xyz < Nz*Ny*Nx; ++xyz) {
-          assert(0 == solid[xyz]);
+          assert(!solid[xyz].is_solid());
       } // xyz
 
       // define Half way Bounce Back Boundary condition
@@ -87,7 +88,8 @@ namespace lbm_initialize {
                   for (int z = 0; z < Nz; ++z) {
                       for (int y = 0; y < Ny; ++y) {
                           index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on left/right boundary, x==min/max
-                          solid[xyz] = 3 + lu;
+//                        solid[xyz] = 3 + lu;
+                          solid[xyz].set_solid();
                           rho[xyz] = rho_solid;
                       } // y
                   } // z
@@ -100,7 +102,8 @@ namespace lbm_initialize {
                   for (int z = 0; z < Nz; ++z) {
                       for (int x = 0; x < Nx; ++x) {
                           index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on bottom/top boundary, y==min/max
-                          solid[xyz] = 1 + lu;
+//                        solid[xyz] = 1 + lu;
+                          solid[xyz].set_solid();
                           rho[xyz] = rho_solid;
                           // specialty of the y-direction:
                           if (0 != wall_speed[dir][lu]) {
@@ -119,7 +122,8 @@ namespace lbm_initialize {
                   for (int y = 0; y < Ny; ++y) {
                       for (int x = 0; x < Nx; ++x) {
                           index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on front/back boundary, z==min/max
-                          solid[xyz] = 5 + lu;
+//                        solid[xyz] = 5 + lu;
+                          solid[xyz].set_solid();
                           rho[xyz] = rho_solid;
                       } // x
                   } // y
@@ -132,18 +136,20 @@ namespace lbm_initialize {
 
   void initialize_density(
         double *restrict const rho // result
-      , char const *restrict const solid
+//       , char const *restrict const solid
+      , CellInfo const *restrict const solid
       , double const value
       , int const NzNyNx
   ) {
       for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
-          if (!solid[xyz]) rho[xyz] = value;
+          if (!solid[xyz].is_solid()) rho[xyz] = value;
       } // xyz
   } // initialize_density
   
   void initialize_droplet(
         double     *restrict const rho // in/output density
-      , char const *restrict const solid
+//       , char const *restrict const solid
+      , CellInfo const *restrict const solid
       , int const Nx, int const Ny, int const Nz
       , double const dx, double const dy, double const dz // droplet center
       , double const dr // droplet radius
@@ -158,7 +164,7 @@ namespace lbm_initialize {
           for (int y = 0; y < Ny; ++y) {
               for (int x = 0; x < Nx; ++x) {
                   index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                  if (!solid[xyz]) {
+                  if (!solid[xyz].is_solid()) {
                       auto const radius = std::sqrt(pow2(x - dx) + pow2(y - dy) + pow2(z - dz));
                       auto const tmp = 0.5*(rho_sum - rho_diff*std::tanh(2.0*(radius - dr)/ifaceW));
                       if (tmp > rho[xyz]) rho[xyz] = tmp;
