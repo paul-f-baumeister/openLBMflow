@@ -123,7 +123,7 @@ double outputSave(
     , double const ux[]
     , double const uy[]
     , double const uz[]
-    , double const phi[] 
+    , double const phi[] // index using phi[phindex(x, y, z)]
     , int const ranks[3]
     , int const myrank
     , int const Nx, int const Ny, int const Nz //  local lattice sites

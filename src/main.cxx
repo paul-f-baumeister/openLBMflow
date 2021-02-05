@@ -44,9 +44,11 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 inline index_t indexyz(int const x, int const y, int const z, int const Nx, int const Ny) { return (z*Ny + y)*Nx + x; }
 #define phindex(x,y,z) ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1) // enlarged with a halo of thickness 1
 
-#include "lbm_visualize.hxx" // ::write_collection_pvd, ::writeVTK
-
 #define restrict __restrict__
+
+#include "lbm_initialize.hxx" // ::initialize_body_force, initialize_distrFunc
+#include "lbm_visualize.hxx" // ::write_collection_pvd, ::writeVTK, ::outputSave
+
 
 template <typename real_t>
 void transfer_phi_halos(
@@ -456,6 +458,7 @@ void update(
  //
  //
 
+#if 0
 template <typename real_t>
 void initialize_boundary(
       int    const boundary[3][2]
@@ -537,20 +540,23 @@ void initialize_density(
     } // xyz
 } // initialize_density
 
-void initialize_body_force(
-      double body_force_xyz[3] // result: body force
-    , double const body_force
-    , double const body_force_dir=0 // 0: negative y-direction
-) {
+#endif
 
-    // set body_force vector (global variable body_force_xyz)
-    double const arg = body_force_dir*(M_PI/180.);
-    body_force_xyz[0] =  body_force*std::sin(arg);
-    body_force_xyz[1] = -body_force*std::cos(arg);
-    body_force_xyz[2] =  0;
+// void initialize_body_force(
+//       double body_force_xyz[3] // result: body force
+//     , double const body_force
+//     , double const body_force_dir=0 // 0: negative y-direction
+// ) {
+// 
+//     // set body_force vector
+//     double const arg = body_force_dir*(M_PI/180.);
+//     body_force_xyz[0] =  body_force*std::sin(arg);
+//     body_force_xyz[1] = -body_force*std::cos(arg);
+//     body_force_xyz[2] =  0;
+// 
+// } // initialize_body_force
 
-} // initialize_body_force
-
+#if 0
 template <typename real_t, class Stencil>
 void initialize_distrFunc(
       view2D<real_t> & populations // result: mover populations(xyz,q)
@@ -558,18 +564,18 @@ void initialize_distrFunc(
     , int const NzNyNx
     , char   const *restrict const solid
     , double const *restrict const rho
-    , double *restrict const ux
-    , double *restrict const uy
-    , double *restrict const uz
+    , double const *restrict const ux
+    , double const *restrict const uy
+    , double const *restrict const uz
 ) {
-    double const uvec[3] = {0, 0, 0}; // input current
+//     double const uvec[3] = {0, 0, 0}; // input current
 
     for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
         if (!solid[xyz]) {
             double const rho_tmp = rho[xyz];
-            double const ux_tmp = uvec[0];
-            double const uy_tmp = uvec[1]; // here, a more complex flow field could be initialized
-            double const uz_tmp = uvec[2];
+            double const ux_tmp = ux[xyz];
+            double const uy_tmp = uy[xyz]; // here, a more complex flow field could be initialized
+            double const uz_tmp = uz[xyz];
 
             double const u_squared = pow2(ux_tmp) + pow2(uy_tmp) + pow2(uz_tmp);
             for (int q = 0; q < stencil.Q; q++) {
@@ -583,14 +589,11 @@ void initialize_distrFunc(
                 populations(xyz, q) = feq;
             } // q
 
-            ux[xyz] = ux_tmp;
-            uy[xyz] = uy_tmp;
-            uz[xyz] = uz_tmp;
         } // solid
     } // xyz
 
 } // initialize_distrFunc
-
+#endif
 
 void initialize_droplet(
       double     *restrict const rho // in/output density
@@ -619,80 +622,6 @@ void initialize_droplet(
     } // z
 } // initialize_droplet
 
-#define wall_clock(noarg) ((double) clock()/((double) CLOCKS_PER_SEC))
-
-#if 0
-template <typename real_t=double>
-double outputSave(
-      int const time
-    , double const rho[]
-    , double const ux[]
-    , double const uy[]
-    , double const uz[]
-    , double const phi[]
-    , int const ranks[3]
-    , int const myrank
-    , int const Nx, int const Ny, int const Nz //  local lattice sites
-    , int const nx, int const ny, int const nz // global lattice sites
-    , int const save_rho
-    , int const save_pre
-    , int const save_vel
-    , double const G
-) {
-    static double timer_start, step_start{0};
-
-    double time_stop = wall_clock(); // stop internal timer
-
-    // calculate performance in units of Mega Lattice Site Updates per second: MLUP/s
-    double const Speed = ((nz*ny)*(nx*1e-6)*(time - step_start)/(time_stop - timer_start));
-    step_start = time;
-
-    double const mass = std::accumulate(rho, rho + Nz*Ny*Nx, 0.0);
-    // ToDo: MPI_Allreduce(mass)
-
-    auto const is_master = (0 == myrank);
-    if (is_master) {
-        std::printf("t=%d\tSpeed=%f MLUP/s mass=%f\n", time, Speed, mass);
-#ifdef SuppressIO
-        std::printf("# SuppressIO for writeVTK\n");
-#else
-    } // is_master
-
-    int const nall = nx*ny*nz;
-    int const offs[3] = {ranks[0]*Nx, ranks[1]*Ny, ranks[2]*Nz};
-    std::vector<real_t> rho_all(save_rho*nall);
-    std::vector<real_t> pre_all(save_pre*nall);
-    std::vector<real_t> vel_all[3];
-    for(int d = 0; d < 3; ++d) {
-        vel_all[d] = std::vector<real_t>(save_vel*nall);
-    } // d
-
-    for (int x = 0; x < Nx; ++x) {
-        for (int y = 0; y < Ny; ++y) {
-            for (int z = 0; z < Nz; ++z) {
-                index_t const xyz = indexyz(x, y, z, Nx, Ny); // local index into rho, ux, uy, uz
-                size_t const gxyz = ((x + offs[0])*ny + (y + offs[1]))*nz + (z + offs[2]); // global index
-                if (save_rho) rho_all[gxyz] = rho[xyz];
-                if (save_pre) pre_all[gxyz] = rho[xyz]/3.0 + ((phi) ? G*pow2(phi[phindex(x, y, z)])/6.0 : 0);
-                if (save_vel) {
-                    vel_all[0][gxyz] = ux[xyz];
-                    vel_all[1][gxyz] = uy[xyz];
-                    vel_all[2][gxyz] = uz[xyz];
-                } // velocities
-            } // z
-        } // y
-    } // x
-
-    if (is_master) {
-        lbm_visualize::writeVTK(time, nx, ny, nz, "output", "openLBMflow",
-                        rho_all.data(), pre_all.data(), vel_all[0].data(), vel_all[1].data(), vel_all[2].data());
-#endif
-    } // is_master
-
-    timer_start = wall_clock(); // start internal timer again
-    return Speed;
-} // outputSave
-#endif
 
 template <typename real_t> // floating point type of populations
 double run(
@@ -740,6 +669,35 @@ double run(
 
     // cell info
     auto const solid = get_memory<char>(NzNyNx); // one Byte per cell
+
+
+    // observables
+    // ToDo: group together into a view2D<double> that can be switched between SoA[4][NzNyNx_aligned] and AoS[NzNyNx][4];
+    auto const rho   = get_memory<double>(NzNyNx_aligned, 0.0);
+    auto const ux    = get_memory<double>(NzNyNx_aligned, 0.0);
+    auto const uy    = get_memory<double>(NzNyNx_aligned, 0.0);
+    auto const uz    = get_memory<double>(NzNyNx_aligned, 0.0);
+    // this array has halo-borders and needs to be indexed using phindex(x,y,z);
+    auto const phi   = multiphase ? get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)) : nullptr; 
+
+    int const boundary[3][2] = { {boundary_lef, boundary_rig},
+                                 {boundary_bot, boundary_top},
+                                 {boundary_fro, boundary_bac} };
+    double const wall_speed[3][2] = { {0, 0}, {bot_wall_speed, top_wall_speed}, {0, 0} };
+
+    double const rho_solid = rho_boundary*(rhoh - rhol) + rhol;
+    lbm_initialize::initialize_boundary(boundary, rho_solid, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed);
+
+    lbm_initialize::initialize_density(rho, solid, rhol, NzNyNx); // low density value
+    
+    if (d1r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d1x, d1y, d1z, d1r, drop1, ifaceW, rhoh, rhol);  // droplet 1
+    if (d2r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d2x, d2y, d2z, d2r, drop2, ifaceW, rhoh, rhol);  // droplet 2
+    // extend:   initialize_droplet(rho, solid, Nx, Ny, Nz, d3x, d3y, d3z, d3r, drop3, ifaceW, rhoh, rhol);  // droplet 3
+
+    double body_force_xyz[3];
+    lbm_initialize::initialize_body_force(body_force_xyz, body_force, body_force_dir);
+
+    
     // populations of the velocity distribution functions (two copies)
 //     auto const populations0 = get_memory<real_t>(NzNyNx*Q_aligned);
 //     auto const populations1 = get_memory<real_t>(NzNyNx*Q_aligned);
@@ -757,35 +715,10 @@ double run(
     auto f0 = f0_memory.transpose();
     auto f1 = f1_memory.transpose();
 #endif
-
-
-    // observables
-    // ToDo: group together into a view2D<double> that can be switched between SoA[4][NzNyNx_aligned] and AoS[NzNyNx][4];
-    auto const rho   = get_memory<double>(NzNyNx_aligned, 0.0);
-    auto const ux    = get_memory<double>(NzNyNx_aligned);
-    auto const uy    = get_memory<double>(NzNyNx_aligned);
-    auto const uz    = get_memory<double>(NzNyNx_aligned);
-    // this array has halo-borders and needs to be indexed using phindex(x,y,z);
-    auto const phi = multiphase ? get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)) : nullptr; 
-
-    int const boundary[3][2] = { {boundary_lef, boundary_rig},
-                                 {boundary_bot, boundary_top},
-                                 {boundary_fro, boundary_bac} };
-    double const wall_speed[3][2] = { {0, 0}, {bot_wall_speed, top_wall_speed}, {0, 0} };
-
-    double const rho_solid = rho_boundary*(rhoh - rhol) + rhol;
-    initialize_boundary(boundary, rho_solid, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed);
-
-    initialize_density(rho, solid, rhol, NzNyNx); // low density value
     
-    if (d1r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d1x, d1y, d1z, d1r, drop1, ifaceW, rhoh, rhol);  // droplet 1
-    if (d2r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d2x, d2y, d2z, d2r, drop2, ifaceW, rhoh, rhol);  // droplet 2
-    // extend:   initialize_droplet(rho, solid, Nx, Ny, Nz, d3x, d3y, d3z, d3r, drop3, ifaceW, rhoh, rhol);  // droplet 3
-
-    double body_force_xyz[3];
-    initialize_body_force(body_force_xyz, body_force, body_force_dir);
     
-    initialize_distrFunc(f0, stencil, NzNyNx, solid, rho, ux, uy, uz);
+    
+    lbm_initialize::initialize_distrFunc(f0, stencil, NzNyNx, solid, rho, ux, uy, uz);
 
     double speed_stats[] = {0, 0, 0};
 
