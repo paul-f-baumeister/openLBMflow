@@ -324,7 +324,7 @@ void update(
 
           #undef ph // abbreviation
 
-                    double const ref_rho = rho[xyz]; // load density
+//                     double const ref_rho = rho[xyz]; // load density
 //                     double const inv_rho_ref = 1/ref_rho;
 
 
@@ -363,7 +363,7 @@ void update(
                                     + (f_nop + f_pon)
                                     + (f_ppo + f_nno)
                                     + (f_npo + f_pno);
-                    assert(tmp_rho == ref_rho);
+
                     double const inv_rho = 1.0/tmp_rho;
                     
                     // x-current        p      n
@@ -386,6 +386,11 @@ void update(
                                     + (f_nop - f_pon)
                                     + (f_opp - f_onn)
                                     + (f_onp - f_opn) )*inv_rho;
+                                    
+                    assert(tmp_rho == rho[xyz]);
+                    assert(tmp_ux*1 == ux[xyz]);
+                    assert(tmp_uy*1 == uy[xyz]);
+                    assert(tmp_uz*1 == uz[xyz]);
 
                     // interparticular potential in equilibrium velocity
                     // load current directions
