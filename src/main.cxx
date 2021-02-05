@@ -215,65 +215,19 @@ void update(
                 if (!solid[xyz]) {
                     // load
                     auto const fp = f_previous[xyz]; // get a 1D subview
-                    double const f_ooo = fp[q_ooo];
-                    double const f_poo = fp[q_poo];
-                    double const f_ppo = fp[q_ppo];
-                    double const f_opo = fp[q_opo];
-                    double const f_npo = fp[q_npo];
-                    double const f_noo = fp[q_noo];
-                    double const f_nno = fp[q_nno];
-                    double const f_ono = fp[q_ono];
-                    double const f_pno = fp[q_pno];
-                    double const f_opp = fp[q_opp];
-                    double const f_oop = fp[q_oop];
-                    double const f_onp = fp[q_onp];
-                    double const f_onn = fp[q_onn];
-                    double const f_oon = fp[q_oon];
-                    double const f_opn = fp[q_opn];
-                    double const f_pop = fp[q_pop];
-                    double const f_nop = fp[q_nop];
-                    double const f_non = fp[q_non];
-                    double const f_pon = fp[q_pon];
 
                     // calculate rho and ux, uy, uz
-                    double const tmp_rho = f_ooo 
-                                    + (f_poo + f_noo) 
-                                    + (f_opo + f_ono) 
-                                    + (f_oop + f_oon)
+                    double const tmp_rho = fp[q_ooo]
+                                    + (fp[q_poo] + fp[q_noo]) 
+                                    + (fp[q_opo] + fp[q_ono]) 
+                                    + (fp[q_oop] + fp[q_oon])
                                     
-                                    + (f_opp + f_onn)
-                                    + (f_onp + f_opn)
-                                    + (f_pop + f_non)
-                                    + (f_nop + f_pon)
-                                    + (f_ppo + f_nno)
-                                    + (f_npo + f_pno);
-                                
-//                     double const inv_rho = 1.0/tmp_rho;
-//                     
-//                     x-current        p      n
-//                     double tmp_ux = ( (f_poo - f_noo) 
-//                                     + (f_ppo - f_nno) 
-//                                     + (f_pno - f_npo)
-//                                     + (f_pop - f_non)
-//                                     + (f_pon - f_nop) )*inv_rho;
-// 
-//                     y-current         p      n
-//                     double tmp_uy = ( (f_opo - f_ono) 
-//                                     + (f_ppo - f_nno) 
-//                                     + (f_npo - f_pno)
-//                                     + (f_opp - f_onn)
-//                                     + (f_opn - f_onp) )*inv_rho;
-// 
-//                     z-current          p      n
-//                     double tmp_uz = ( (f_oop - f_oon) 
-//                                     + (f_pop - f_non) 
-//                                     + (f_nop - f_pon)
-//                                     + (f_opp - f_onn)
-//                                     + (f_onp - f_opn) )*inv_rho;
-//
-//                     ux[xyz] = tmp_ux; //
-//                     uy[xyz] = tmp_uy; // store macroscopic velocities
-//                     uz[xyz] = tmp_uz; //
+                                    + (fp[q_opp] + fp[q_onn])
+                                    + (fp[q_onp] + fp[q_opn])
+                                    + (fp[q_pop] + fp[q_non])
+                                    + (fp[q_nop] + fp[q_pon])
+                                    + (fp[q_ppo] + fp[q_nno])
+                                    + (fp[q_npo] + fp[q_pno]);
  
                     rho[xyz] = tmp_rho; // store density
                 } // solid
