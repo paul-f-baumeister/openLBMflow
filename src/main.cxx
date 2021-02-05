@@ -206,9 +206,10 @@ void update(
                  half_wi1 = 0.5*stencil.weight(1),
                  half_wi2 = 0.5*stencil.weight(2);
 
-    // calculate rho, ux, uy, uz and phi
+#ifdef MultiPhase
+    // update rho to calculate phi
     for (int x = 0; x < Nx; ++x) {
-        for (int y = 0; y < Ny; ++y) {
+        for (int y = 0; y < Ny; ++y) { // ToDo: can be merged into a 1D loop
             for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
@@ -247,35 +248,34 @@ void update(
                                     + (f_ppo + f_nno)
                                     + (f_npo + f_pno);
                                 
-                    double const inv_rho = 1.0/tmp_rho;
-                    
-                    // x-current        p      n
-                    double tmp_ux = ( (f_poo - f_noo) 
-                                    + (f_ppo - f_nno) 
-                                    + (f_pno - f_npo)
-                                    + (f_pop - f_non)
-                                    + (f_pon - f_nop) )*inv_rho;
-
-                    // y-current         p      n
-                    double tmp_uy = ( (f_opo - f_ono) 
-                                    + (f_ppo - f_nno) 
-                                    + (f_npo - f_pno)
-                                    + (f_opp - f_onn)
-                                    + (f_opn - f_onp) )*inv_rho;
-
-                    // z-current          p      n
-                    double tmp_uz = ( (f_oop - f_oon) 
-                                    + (f_pop - f_non) 
-                                    + (f_nop - f_pon)
-                                    + (f_opp - f_onn)
-                                    + (f_onp - f_opn) )*inv_rho;
+//                     double const inv_rho = 1.0/tmp_rho;
+//                     
+//                     x-current        p      n
+//                     double tmp_ux = ( (f_poo - f_noo) 
+//                                     + (f_ppo - f_nno) 
+//                                     + (f_pno - f_npo)
+//                                     + (f_pop - f_non)
+//                                     + (f_pon - f_nop) )*inv_rho;
+// 
+//                     y-current         p      n
+//                     double tmp_uy = ( (f_opo - f_ono) 
+//                                     + (f_ppo - f_nno) 
+//                                     + (f_npo - f_pno)
+//                                     + (f_opp - f_onn)
+//                                     + (f_opn - f_onp) )*inv_rho;
+// 
+//                     z-current          p      n
+//                     double tmp_uz = ( (f_oop - f_oon) 
+//                                     + (f_pop - f_non) 
+//                                     + (f_nop - f_pon)
+//                                     + (f_opp - f_onn)
+//                                     + (f_onp - f_opn) )*inv_rho;
+//
+//                     ux[xyz] = tmp_ux; //
+//                     uy[xyz] = tmp_uy; // store macroscopic velocities
+//                     uz[xyz] = tmp_uz; //
  
                     rho[xyz] = tmp_rho; // store density
-#ifdef MultiPhase
-// ----------------------------------------------------// multi-phase //---------------------------------------begin
-                    ux[xyz] = tmp_ux; //
-                    uy[xyz] = tmp_uy; // store macroscopic velocities
-                    uz[xyz] = tmp_uz; //
                 } // solid
                 if (phi) phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); // calculate interparticular force in multiphase Shan-Chen model
             } // z
@@ -286,12 +286,15 @@ void update(
     transfer_phi_halos(phi, Nx, Ny, Nz); // make the halo-enlarged array periodic
 
     double const inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
+#endif // MultiPhase
 
     for (int x = 0; x < Nx; ++x) {
         for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
+  
+#ifdef MultiPhase
 
           #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
                     double const tmp_phi = ph(x, y, z);
@@ -324,11 +327,10 @@ void update(
 
           #undef ph // abbreviation
 
-//                     double const ref_rho = rho[xyz]; // load density
-//                     double const inv_rho_ref = 1/ref_rho;
+#endif // MultiPhase
 
 
-                    // load again
+                    // load
                     auto const fp = f_previous[xyz]; // get a 1D subview
                     double const f_ooo = fp[q_ooo];
                     double const f_poo = fp[q_poo];
@@ -365,7 +367,7 @@ void update(
                                     + (f_npo + f_pno);
 
                     double const inv_rho = 1.0/tmp_rho;
-                    
+
                     // x-current        p      n
                     double tmp_ux = ( (f_poo - f_noo) 
                                     + (f_ppo - f_nno) 
@@ -387,10 +389,12 @@ void update(
                                     + (f_opp - f_onn)
                                     + (f_onp - f_opn) )*inv_rho;
                                     
+#ifdef MultiPhase
+
                     assert(tmp_rho == rho[xyz]);
-                    assert(tmp_ux*1 == ux[xyz]);
-                    assert(tmp_uy*1 == uy[xyz]);
-                    assert(tmp_uz*1 == uz[xyz]);
+//                     assert(tmp_ux*1 == ux[xyz]);
+//                     assert(tmp_uy*1 == uy[xyz]);
+//                     assert(tmp_uz*1 == uz[xyz]);
 
                     // interparticular potential in equilibrium velocity
                     // load current directions
@@ -398,9 +402,8 @@ void update(
                     tmp_uy -= tau*(G*tmp_phi*grad_phi_y)*inv_rho;
                     tmp_uz -= tau*(G*tmp_phi*grad_phi_z)*inv_rho;
                                     
-
-// ----------------------------------------------------// multi-phase //---------------------------------------end
 #endif // MultiPhase
+
                     // add the body force (now in the second loop?)
                     tmp_ux += tau*body_force_xyz[0];
                     tmp_uy += tau*body_force_xyz[1];
