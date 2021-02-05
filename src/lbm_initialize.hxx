@@ -141,6 +141,33 @@ namespace lbm_initialize {
       } // xyz
   } // initialize_density
   
+  void initialize_droplet(
+        double     *restrict const rho // in/output density
+      , char const *restrict const solid
+      , int const Nx, int const Ny, int const Nz
+      , double const dx, double const dy, double const dz // droplet center
+      , double const dr // droplet radius
+      , int    const drop
+      , double const ifaceW
+      , double const rho_high
+      , double const rho_low
+  ) {
+      auto const rho_diff = (rho_high - rho_low)*drop;
+      auto const rho_sum  =  rho_high + rho_low;
+      for (int z = 0; z < Nz; ++z) {
+          for (int y = 0; y < Ny; ++y) {
+              for (int x = 0; x < Nx; ++x) {
+                  index_t const xyz = indexyz(x, y, z, Nx, Ny);
+                  if (!solid[xyz]) {
+                      auto const radius = std::sqrt(pow2(x - dx) + pow2(y - dy) + pow2(z - dz));
+                      auto const tmp = 0.5*(rho_sum - rho_diff*std::tanh(2.0*(radius - dr)/ifaceW));
+                      if (tmp > rho[xyz]) rho[xyz] = tmp;
+                  } // solid
+              } // x
+          } // y
+      } // z
+  } // initialize_droplet
+  
   
   
 #ifdef  NO_UNIT_TESTS

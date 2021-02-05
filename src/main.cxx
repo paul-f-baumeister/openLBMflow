@@ -166,14 +166,6 @@ inline void propagate(
 
 } // propagate
 
-// template <typename real_t>
-// inline real_t equilibrium(
-//       real_t half_weight // half weight
-//     , real_t uv // vec u dot vector v
-//     , real_t u2 // vec u^2
-// ) {
-//     return half_weight*(2 + 6*uv - 3*u2 + 9*uv*uv);
-// } // equilibrium
 
 // kernel (performance critical code section)
 template <typename real_t, bool multiphase>
@@ -254,15 +246,13 @@ void update(
                 index_t const xyz = indexyz(x, y, z, Nx, Ny);
                 if (!solid[xyz]) {
   
-//                 double grad_phi_x{0}, grad_phi_y{0}, grad_phi_z{0}, tmp_phi;
-                double G_phi_grad_phi[3];
-                if (multiphase) {
+                    double G_phi_grad_phi[3];
+                    if (multiphase) {
                         double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
-
-                    #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
 
                         double grad_phi[3];
                         // calculate phi-gradients
+                        #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
                         grad_phi[0] = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
                         grad_phi[1] = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
                         grad_phi[2] = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
@@ -291,7 +281,7 @@ void update(
 
                         // central point
                         double const G_phi = G*ph(x, y, z);
-                    #undef ph // abbreviation
+                        #undef ph // abbreviation
 
                         for(int d = 0; d < 3; ++d) {
                             G_phi_grad_phi[d] = G_phi*grad_phi[d];
@@ -370,10 +360,11 @@ void update(
                         for(int d = 0; d < 3; ++d) {
                             force[d] -= G_phi_grad_phi[d]*inv_rho;
                         } // d
-
+                    } else {
+                        rho[xyz] = tmp_rho; // store the density
                     } // multiphase
 
-                    // add the body force (now in the second loop?)
+                    // add the body force and phi-gradients in multiphase
                     tmp_ux += tau*force[0];
                     tmp_uy += tau*force[1];
                     tmp_uz += tau*force[2];
@@ -451,178 +442,6 @@ void update(
 
 } // update
 
-
- //
- //
- // initialization functions rho, ux, uy, uz (not critical for performance)
- //
- //
-
-#if 0
-template <typename real_t>
-void initialize_boundary(
-      int    const boundary[3][2]
-    , double const rho_solid
-    , char   *restrict const solid
-    , real_t *restrict const rho
-    , real_t *restrict const ux
-    , real_t *restrict const uy
-    , real_t *restrict const uz
-    , int const Nx, int const Ny, int const Nz
-    , double const wall_speed[3][2] // lef,rig,bot,top,fro,bac
-) {
-
-    // initialize type of cells
-    for (index_t xyz = 0; xyz < Nz*Ny*Nx; ++xyz) {
-        assert(0 == solid[xyz]);
-    } // xyz
-
-    // define Half way Bounce Back Boundary condition
-    for (int lu = 0; lu <= 1; ++lu) { // {0:lower, 1:upper}
-      
-        {   int constexpr dir = 0; // x-direction (left/right)
-            if (boundary[dir][lu] > 0) {
-                int const x = lu*(Nx - 1);
-                for (int z = 0; z < Nz; ++z) {
-                    for (int y = 0; y < Ny; ++y) {
-                        index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on left/right boundary, x==min/max
-                        solid[xyz] = 3 + lu;
-                        rho[xyz] = rho_solid;
-                    } // y
-                } // z
-            } // boundary
-        } // x-direction
-
-        {   int constexpr dir = 1; // y-direction (down/up)
-            if (boundary[dir][lu] > 0) {
-                int const y = lu*(Ny - 1);
-                for (int z = 0; z < Nz; ++z) {
-                    for (int x = 0; x < Nx; ++x) {
-                        index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on bottom/top boundary, y==min/max
-                        solid[xyz] = 1 + lu;
-                        rho[xyz] = rho_solid;
-                        // specialty of the y-direction:
-                        if (0 != wall_speed[dir][lu]) {
-                            ux[xyz] = wall_speed[dir][lu];
-                            uy[xyz] = 0;
-                            uz[xyz] = 0;
-                        } // wall_speed flowing in x-direction
-                    } // x
-                } // z
-            } // boundary
-        } // y-direction
-
-        {   int constexpr dir = 2; // z-direction (front/back)
-            if (boundary[dir][lu] > 0) {
-                int const z = lu*(Nz - 1);
-                for (int y = 0; y < Ny; ++y) {
-                    for (int x = 0; x < Nx; ++x) {
-                        index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on front/back boundary, z==min/max
-                        solid[xyz] = 5 + lu;
-                        rho[xyz] = rho_solid;
-                    } // x
-                } // y
-            } // boundary
-        } // z-direction
-
-    } // lu
-
-} // initialize_boundary
-
-void initialize_density(
-      double *restrict const rho // result
-    , char const *restrict const solid
-    , double const value
-    , int const NzNyNx
-) {
-    for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
-        if (!solid[xyz]) rho[xyz] = value;
-    } // xyz
-} // initialize_density
-
-#endif
-
-// void initialize_body_force(
-//       double body_force_xyz[3] // result: body force
-//     , double const body_force
-//     , double const body_force_dir=0 // 0: negative y-direction
-// ) {
-// 
-//     // set body_force vector
-//     double const arg = body_force_dir*(M_PI/180.);
-//     body_force_xyz[0] =  body_force*std::sin(arg);
-//     body_force_xyz[1] = -body_force*std::cos(arg);
-//     body_force_xyz[2] =  0;
-// 
-// } // initialize_body_force
-
-#if 0
-template <typename real_t, class Stencil>
-void initialize_distrFunc(
-      view2D<real_t> & populations // result: mover populations(xyz,q)
-    , Stencil const & stencil
-    , int const NzNyNx
-    , char   const *restrict const solid
-    , double const *restrict const rho
-    , double const *restrict const ux
-    , double const *restrict const uy
-    , double const *restrict const uz
-) {
-//     double const uvec[3] = {0, 0, 0}; // input current
-
-    for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
-        if (!solid[xyz]) {
-            double const rho_tmp = rho[xyz];
-            double const ux_tmp = ux[xyz];
-            double const uy_tmp = uy[xyz]; // here, a more complex flow field could be initialized
-            double const uz_tmp = uz[xyz];
-
-            double const u_squared = pow2(ux_tmp) + pow2(uy_tmp) + pow2(uz_tmp);
-            for (int q = 0; q < stencil.Q; q++) {
-                auto const e = stencil.velocity(q);
-                double const vel = e[0]*ux_tmp + e[1]*uy_tmp + e[2]*uz_tmp;
-                auto const v2 = stencil.velocity_squared(q);
-                assert(v2 == pow2(e[0]) + pow2(e[1]) + pow2(e[2]));
-                double const weight = stencil.weight(v2);
-//              double const feq = 0.5*weight*rho_tmp*(2 + 6*vel + 9*pow2(vel) - 3*u_squared);
-                double const feq = stencil.equilibrium(0.5*weight*rho_tmp, vel, u_squared);
-                populations(xyz, q) = feq;
-            } // q
-
-        } // solid
-    } // xyz
-
-} // initialize_distrFunc
-#endif
-
-void initialize_droplet(
-      double     *restrict const rho // in/output density
-    , char const *restrict const solid
-    , int const Nx, int const Ny, int const Nz
-    , double const dx, double const dy, double const dz // droplet center
-    , double const dr // droplet radius
-    , int    const drop
-    , double const ifaceW
-    , double const rho_high
-    , double const rho_low
-) {
-    auto const rho_diff = (rho_high - rho_low)*drop;
-    auto const rho_sum  =  rho_high + rho_low;
-    for (int z = 0; z < Nz; ++z) {
-        for (int y = 0; y < Ny; ++y) {
-            for (int x = 0; x < Nx; ++x) {
-                index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                if (!solid[xyz]) {
-                    auto const radius = std::sqrt(pow2(x - dx) + pow2(y - dy) + pow2(z - dz));
-                    auto const tmp = 0.5*(rho_sum - rho_diff*std::tanh(2.0*(radius - dr)/ifaceW));
-                    if (tmp > rho[xyz]) rho[xyz] = tmp;
-                } // solid
-            } // x
-        } // y
-    } // z
-} // initialize_droplet
-
-
 template <typename real_t> // floating point type of populations
 double run(
     int const myrank=0
@@ -690,9 +509,9 @@ double run(
 
     lbm_initialize::initialize_density(rho, solid, rhol, NzNyNx); // low density value
     
-    if (d1r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d1x, d1y, d1z, d1r, drop1, ifaceW, rhoh, rhol);  // droplet 1
-    if (d2r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d2x, d2y, d2z, d2r, drop2, ifaceW, rhoh, rhol);  // droplet 2
-    // extend:   initialize_droplet(rho, solid, Nx, Ny, Nz, d3x, d3y, d3z, d3r, drop3, ifaceW, rhoh, rhol);  // droplet 3
+    if (d1r > 0) lbm_initialize::initialize_droplet(rho, solid, Nx, Ny, Nz, d1x, d1y, d1z, d1r, drop1, ifaceW, rhoh, rhol);  // droplet 1
+    if (d2r > 0) lbm_initialize::initialize_droplet(rho, solid, Nx, Ny, Nz, d2x, d2y, d2z, d2r, drop2, ifaceW, rhoh, rhol);  // droplet 2
+    // extend:   lbm_initialize::initialize_droplet(rho, solid, Nx, Ny, Nz, d3x, d3y, d3z, d3r, drop3, ifaceW, rhoh, rhol);  // droplet 3
 
     double body_force_xyz[3];
     lbm_initialize::initialize_body_force(body_force_xyz, body_force, body_force_dir);
@@ -715,7 +534,7 @@ double run(
     auto f0 = f0_memory.transpose();
     auto f1 = f1_memory.transpose();
 #endif
-    
+
     
     
     lbm_initialize::initialize_distrFunc(f0, stencil, NzNyNx, solid, rho, ux, uy, uz);
