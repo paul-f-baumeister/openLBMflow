@@ -208,6 +208,8 @@ void update(
 
 #ifdef MultiPhase
     // update rho to calculate phi
+    assert(nullptr != phi);
+
             for (int z = 0; z < Nz; ++z) {
         for (int y = 0; y < Ny; ++y) {
     for (int x = 0; x < Nx; ++x) {
@@ -216,6 +218,8 @@ void update(
 
                     auto const fp = f_previous[xyz]; // get a 1D subview
                     // calculate only rho
+#define ALLOW_DEVIATIONS
+#ifndef ALLOW_DEVIATIONS
                     double const tmp_rho = double(fp[q_ooo])
                                     + (double(fp[q_poo]) + double(fp[q_noo])) 
                                     + (double(fp[q_opo]) + double(fp[q_ono]))
@@ -227,27 +231,33 @@ void update(
                                     + (double(fp[q_nop]) + double(fp[q_pon]))
                                     + (double(fp[q_ppo]) + double(fp[q_nno]))
                                     + (double(fp[q_npo]) + double(fp[q_pno]));
- 
+#else  // ALLOW_DEVIATIONS
+                    // if we allow some deviations, it can be written much shorter 
+                    //          and much more flexible w.r.t. different stencils:
+                    double tmp_rho{0};
+                    for(int q = 0; q < Q; ++q) {
+                        tmp_rho += double(fp[q]);
+                    } // q
+#endif // ALLOW_DEVIATIONS
                     rho[xyz] = tmp_rho; // store density
                 } // solid
-                if (phi) phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); // calculate interparticular force in multiphase Shan-Chen model
+                phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); // calculate interparticular force in multiphase Shan-Chen model
            } // z
        } // y
     } // x
-    assert(nullptr != phi);
 
     transfer_phi_halos(phi, Nx, Ny, Nz); // make the halo-enlarged array periodic
 
-    double const inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
 #endif // MultiPhase
 
-    for (int x = 0; x < Nx; ++x) {
-        for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
+        for (int y = 0; y < Ny; ++y) {
+    for (int x = 0; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
   
 #ifdef MultiPhase
+                    double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
 
           #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
 
@@ -345,10 +355,9 @@ void update(
                                     
 #ifdef MultiPhase
 
+    #ifndef ALLOW_DEVIATIONS
                     assert(tmp_rho == rho[xyz]);
-//                     assert(tmp_ux*1 == ux[xyz]);
-//                     assert(tmp_uy*1 == uy[xyz]);
-//                     assert(tmp_uz*1 == uz[xyz]);
+    #endif // ALLOW_DEVIATIONS
 
                     // interparticular potential in equilibrium velocity
                     // load current directions
