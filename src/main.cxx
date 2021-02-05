@@ -95,14 +95,14 @@ void transfer_phi_halos(
 
 template <typename real_t>
 inline void solid_cell_treatment( // ToDo: reorder argument list
-      index_t const xyz
-    , double const  *restrict const rho // rho[nxyz]
+      real_t        *restrict const tmp_fn // inout: tmp_fn[Q]
     , view2D<real_t> const & fn  // fn[nxyz*Q] or fn[Q*nxyz]
-    , real_t        *restrict const tmp_fn // inout: tmp_fn[Q]
+    , index_t const xyz
+    , double  const *restrict const rho // rho[nxyz]
     , uint8_t const *restrict const opposite
-    , int const Q
-    , double const top_wall_speed
-    , double const bot_wall_speed=0
+    , int     const Q
+    , double  const top_wall_speed
+    , double  const bot_wall_speed=0
 ) {
 
     for (int q = 0; q < Q; ++q) {
@@ -270,10 +270,6 @@ void update(
                                     + (f_opp - f_onn)
                                     + (f_onp - f_opn) )*inv_rho;
  
-                    // add the body force (can this be moved into the second loop?)
-//                     tmp_ux += tau*body_force_xyz[0];
-//                     tmp_uy += tau*body_force_xyz[1];
-//                     tmp_uz += tau*body_force_xyz[2];
                     rho[xyz] = tmp_rho; // store density
 #ifdef MultiPhase
 // ----------------------------------------------------// multi-phase //---------------------------------------begin
@@ -328,13 +324,9 @@ void update(
 
           #undef ph // abbreviation
 
-                    double const tmp_rho = rho[xyz]; // load density
-                    double const inv_rho = 1/tmp_rho;
+                    double const ref_rho = rho[xyz]; // load density
+//                     double const inv_rho_ref = 1/ref_rho;
 
-                    // interparticular potential in equilibrium velocity
-                    double tmp_ux = ux[xyz] - tau*(G*tmp_phi*grad_phi_x)*inv_rho;
-                    double tmp_uy = uy[xyz] - tau*(G*tmp_phi*grad_phi_y)*inv_rho;
-                    double tmp_uz = uz[xyz] - tau*(G*tmp_phi*grad_phi_z)*inv_rho;
 
                     // load again
                     auto const fp = f_previous[xyz]; // get a 1D subview
@@ -357,6 +349,50 @@ void update(
                     double const f_nop = fp[q_nop];
                     double const f_non = fp[q_non];
                     double const f_pon = fp[q_pon];
+                    
+                    
+                    // calculate rho and ux, uy, uz
+                    double const tmp_rho = f_ooo 
+                                    + (f_poo + f_noo) 
+                                    + (f_opo + f_ono) 
+                                    + (f_oop + f_oon)
+                                    
+                                    + (f_opp + f_onn)
+                                    + (f_onp + f_opn)
+                                    + (f_pop + f_non)
+                                    + (f_nop + f_pon)
+                                    + (f_ppo + f_nno)
+                                    + (f_npo + f_pno);
+                    assert(tmp_rho == ref_rho);
+                    double const inv_rho = 1.0/tmp_rho;
+                    
+                    // x-current        p      n
+                    double tmp_ux = ( (f_poo - f_noo) 
+                                    + (f_ppo - f_nno) 
+                                    + (f_pno - f_npo)
+                                    + (f_pop - f_non)
+                                    + (f_pon - f_nop) )*inv_rho;
+
+                    // y-current         p      n
+                    double tmp_uy = ( (f_opo - f_ono) 
+                                    + (f_ppo - f_nno) 
+                                    + (f_npo - f_pno)
+                                    + (f_opp - f_onn)
+                                    + (f_opn - f_onp) )*inv_rho;
+
+                    // z-current          p      n
+                    double tmp_uz = ( (f_oop - f_oon) 
+                                    + (f_pop - f_non) 
+                                    + (f_nop - f_pon)
+                                    + (f_opp - f_onn)
+                                    + (f_onp - f_opn) )*inv_rho;
+
+                    // interparticular potential in equilibrium velocity
+                    // load current directions
+                    tmp_ux -= tau*(G*tmp_phi*grad_phi_x)*inv_rho;
+                    tmp_uy -= tau*(G*tmp_phi*grad_phi_y)*inv_rho;
+                    tmp_uz -= tau*(G*tmp_phi*grad_phi_z)*inv_rho;
+                                    
 
 // ----------------------------------------------------// multi-phase //---------------------------------------end
 #endif // MultiPhase
@@ -429,7 +465,7 @@ void update(
                 } else {
                     real_t tmp_fn[Q];
                     // reflect velocities by swapping the corresponding populations
-                    solid_cell_treatment(xyz, rho, fn, tmp_fn, stencil.opposite(), stencil.Q, top_wall_speed, bot_wall_speed);
+                    solid_cell_treatment(tmp_fn, fn, xyz, rho, stencil.opposite(), stencil.Q, top_wall_speed, bot_wall_speed);
                     propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz);
                 } // solid
             } // z
