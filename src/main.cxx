@@ -213,21 +213,20 @@ void update(
             for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
-                    // load
-                    auto const fp = f_previous[xyz]; // get a 1D subview
 
-                    // calculate rho and ux, uy, uz
-                    double const tmp_rho = fp[q_ooo]
-                                    + (fp[q_poo] + fp[q_noo]) 
-                                    + (fp[q_opo] + fp[q_ono]) 
-                                    + (fp[q_oop] + fp[q_oon])
+                    auto const fp = f_previous[xyz]; // get a 1D subview
+                    // calculate only rho
+                    double const tmp_rho = double(fp[q_ooo])
+                                    + (double(fp[q_poo]) + double(fp[q_noo])) 
+                                    + (double(fp[q_opo]) + double(fp[q_ono]))
+                                    + (double(fp[q_oop]) + double(fp[q_oon]))
                                     
-                                    + (fp[q_opp] + fp[q_onn])
-                                    + (fp[q_onp] + fp[q_opn])
-                                    + (fp[q_pop] + fp[q_non])
-                                    + (fp[q_nop] + fp[q_pon])
-                                    + (fp[q_ppo] + fp[q_nno])
-                                    + (fp[q_npo] + fp[q_pno]);
+                                    + (double(fp[q_opp]) + double(fp[q_onn]))
+                                    + (double(fp[q_onp]) + double(fp[q_opn]))
+                                    + (double(fp[q_pop]) + double(fp[q_non]))
+                                    + (double(fp[q_nop]) + double(fp[q_pon]))
+                                    + (double(fp[q_ppo]) + double(fp[q_nno]))
+                                    + (double(fp[q_npo]) + double(fp[q_pno]));
  
                     rho[xyz] = tmp_rho; // store density
                 } // solid
@@ -308,7 +307,7 @@ void update(
                     
                     
                     // calculate rho and ux, uy, uz
-                    double const tmp_rho = f_ooo 
+                    auto const tmp_rho = f_ooo 
                                     + (f_poo + f_noo) 
                                     + (f_opo + f_ono) 
                                     + (f_oop + f_oon)
