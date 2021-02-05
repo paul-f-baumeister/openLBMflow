@@ -218,7 +218,7 @@ void update(
 
                     auto const fp = f_previous[xyz]; // get a 1D subview
                     // calculate only rho
-#define ALLOW_DEVIATIONS
+// #define ALLOW_DEVIATIONS
 #ifndef ALLOW_DEVIATIONS
                     double const tmp_rho = double(fp[q_ooo])
                                     + (double(fp[q_poo]) + double(fp[q_noo])) 
@@ -427,9 +427,9 @@ void update(
     } // x
 
     // we have to treat the solid cells since some velocities may have penetrated them
-    for (int x = 0 ; x < Nx; ++x) {
-        for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
+        for (int y = 0; y < Ny; ++y) {
+    for (int x = 0 ; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
                     // invoke propagate here, if propagate is separated from collide: copy fp into tmp_fp and call propagate(x, y, z, tmp_fp, fn)
@@ -466,7 +466,7 @@ void initialize_boundary(
 ) {
 
     // initialize type of cells
-    for (index_t xyz = 0; xyz < Nx*Ny*Nz; ++xyz) {
+    for (index_t xyz = 0; xyz < Nz*Ny*Nx; ++xyz) {
         assert(0 == solid[xyz]);
     } // xyz
 
@@ -475,8 +475,8 @@ void initialize_boundary(
       
         {   int constexpr dir = 0; // x-direction (left/right)
             if (boundary[dir][lu] > 0) {
-                for (int y = 0; y < Ny; ++y) {
                     for (int z = 0; z < Nz; ++z) {
+                for (int y = 0; y < Ny; ++y) {
                         index_t const xyz = indexyz(lu*(Nx - 1), y, z, Nx, Ny, Nz); // node on left/right boundary, x==min/max
                         solid[xyz] = 3 + lu;
                         rho[xyz] = rho_solid;
@@ -487,8 +487,8 @@ void initialize_boundary(
 
         {   int constexpr dir = 1; // y-direction (down/up)
             if (boundary[dir][lu] > 0) {
-                for (int x = 0; x < Nx; ++x) {
                     for (int z = 0; z < Nz; ++z) {
+                for (int x = 0; x < Nx; ++x) {
                         index_t const xyz = indexyz(x, lu*(Ny - 1), z, Nx, Ny, Nz); // node on bottom/top boundary, y==min/max
                         solid[xyz] = 1 + lu;
                         rho[xyz] = rho_solid;
@@ -505,8 +505,8 @@ void initialize_boundary(
 
         {   int constexpr dir = 2; // z-direction (front/back)
             if (boundary[dir][lu] > 0) {
-                for (int x = 0; x < Nx; ++x) {
                     for (int y = 0; y < Ny; ++y) {
+                for (int x = 0; x < Nx; ++x) {
                         index_t const xyz = indexyz(x, y, lu*(Nz - 1), Nx, Ny, Nz); // node on front/back boundary, z==min/max
                         solid[xyz] = 5 + lu;
                         rho[xyz] = rho_solid;
@@ -523,9 +523,9 @@ void initialize_density(
       double *restrict const rho // result
     , char const *restrict const solid
     , double const value
-    , int const NxNyNz
+    , int const NzNyNx
 ) {
-    for (index_t xyz = 0; xyz < NxNyNz; ++xyz) {
+    for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
         if (!solid[xyz]) rho[xyz] = value;
     } // xyz
 } // initialize_density
@@ -598,9 +598,9 @@ void initialize_droplet(
 ) {
     auto const rho_diff = (rho_high - rho_low)*drop;
     auto const rho_sum  =  rho_high + rho_low;
-    for (int x = 0; x < Nx; ++x) {
-        for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
+        for (int y = 0; y < Ny; ++y) {
+    for (int x = 0; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
                     auto const radius = std::sqrt(pow2(x - dx) + pow2(y - dy) + pow2(z - dz));
@@ -708,10 +708,10 @@ double run(
     int const Nx = nx;
     int const Ny = ny; 
     int const Nz = nz; // local lattice sizes equal to global
-    int const NxNyNz = Nx*Ny*Nz; // here is some potential for memory alignment, but watch out for loop limits
-    auto const NxNyNz_aligned = (((NxNyNz - 1) >> 2) + 1) << 2;
-    assert(NxNyNz_aligned >= NxNyNz);
-    
+    int const NzNyNx = Nz*Ny*Nx; // here is some potential for memory alignment, but watch out for loop limits
+    auto const NzNyNx_aligned = (((NzNyNx - 1) >> 2) + 1) << 2;
+    assert(NzNyNx_aligned >= NzNyNx);
+
     
     BKG_stencil<3,19> const stencil;
     
@@ -729,31 +729,31 @@ double run(
                 t_mem/double(1ull << 30), stencil.D, stencil.Q, nx, ny, nz);
 
     // cell info
-    auto const solid = get_memory<char>(NxNyNz); // one Byte per cell
+    auto const solid = get_memory<char>(NzNyNx); // one Byte per cell
     // populations of the velocity distribution functions (two copies)
-//     auto const populations0 = get_memory<real_t>(NxNyNz*Q_aligned);
-//     auto const populations1 = get_memory<real_t>(NxNyNz*Q_aligned);
+//     auto const populations0 = get_memory<real_t>(NzNyNx*Q_aligned);
+//     auto const populations1 = get_memory<real_t>(NzNyNx*Q_aligned);
 //     ipop(xyz, q): xyz*Q_aligned + q; // activate for AoS (array of structs) data layout
 //     view2D<real_t> f0(populations0, Q_aligned); // warp
 //     view2D<real_t> f1(populations1, Q_aligned); // warp
     // use memory owning constructors
 #define AoS
 #ifdef AoS
-    view2D<real_t> f0(NxNyNz, Q_aligned); // warp
-    view2D<real_t> f1(NxNyNz, Q_aligned); // warp
+    view2D<real_t> f0(NzNyNx, Q_aligned); // warp
+    view2D<real_t> f1(NzNyNx, Q_aligned); // warp
 #else
-    view2D<real_t> f0_memory(Q_aligned, NxNyNz); // warp
-    view2D<real_t> f1_memory(Q_aligned, NxNyNz); // warp
+    view2D<real_t> f0_memory(Q_aligned, NzNyNx); // warp
+    view2D<real_t> f1_memory(Q_aligned, NzNyNx); // warp
     auto f0 = f0_memory.transpose();
     auto f1 = f1_memory.transpose();
 #endif
 
     // observables
-    // ToDo: group together into a view2D<double> that can be switched between SoA[4][NxNyNz_aligned] and AoS[NxNyNz][4];
-    auto const rho   = get_memory<double>(NxNyNz_aligned, 0.0);
-    auto const ux    = get_memory<double>(NxNyNz_aligned);
-    auto const uy    = get_memory<double>(NxNyNz_aligned);
-    auto const uz    = get_memory<double>(NxNyNz_aligned);
+    // ToDo: group together into a view2D<double> that can be switched between SoA[4][NzNyNx_aligned] and AoS[NzNyNx][4];
+    auto const rho   = get_memory<double>(NzNyNx_aligned, 0.0);
+    auto const ux    = get_memory<double>(NzNyNx_aligned);
+    auto const uy    = get_memory<double>(NzNyNx_aligned);
+    auto const uz    = get_memory<double>(NzNyNx_aligned);
 #ifdef MultiPhase
     auto    const phi = get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)); // this array has halo-borders and needs to be indexed using phindex(x,y,z)
 #else
@@ -768,7 +768,7 @@ double run(
     double const rho_solid = rho_boundary*(rhoh - rhol) + rhol;
     initialize_boundary(boundary, rho_solid, solid, rho, ux, uy, uz, Nx, Ny, Nz, wall_speed);
 
-    initialize_density(rho, solid, rhol, NxNyNz); // low density value
+    initialize_density(rho, solid, rhol, NzNyNx); // low density value
     
     if (d1r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d1x, d1y, d1z, d1r, drop1, ifaceW, rhoh, rhol);  // droplet 1
     if (d2r > 0) initialize_droplet(rho, solid, Nx, Ny, Nz, d2x, d2y, d2z, d2r, drop2, ifaceW, rhoh, rhol);  // droplet 2
@@ -777,7 +777,7 @@ double run(
     double body_force_xyz[3];
     initialize_body_force(body_force_xyz, body_force, body_force_dir);
     
-    initialize_distrFunc(f0, stencil, NxNyNz, solid, rho, ux, uy, uz);
+    initialize_distrFunc(f0, stencil, NzNyNx, solid, rho, ux, uy, uz);
 
     double speed_stats[] = {0, 0, 0};
 
