@@ -38,7 +38,7 @@ FEAFLAGS += -D DEVEL
 OPTFLAGS =
 # OPTFLAGS += -O0
 OPTFLAGS += -O2
-OPTFLAGS += -g -pedantic -Wall -Wno-format-security -Wno-format
+OPTFLAGS += -g -pedantic -Wall -Wno-format-security -Wno-format -Wno-unused-variable
 
 
 EXTFLAGS ?=

@@ -271,9 +271,9 @@ void update(
                                     + (f_onp - f_opn) )*inv_rho;
  
                     // add the body force (can this be moved into the second loop?)
-                    tmp_ux += tau*body_force_xyz[0];
-                    tmp_uy += tau*body_force_xyz[1];
-                    tmp_uz += tau*body_force_xyz[2];
+//                     tmp_ux += tau*body_force_xyz[0];
+//                     tmp_uy += tau*body_force_xyz[1];
+//                     tmp_uz += tau*body_force_xyz[2];
                     rho[xyz] = tmp_rho; // store density
 #ifdef MultiPhase
 // ----------------------------------------------------// multi-phase //---------------------------------------begin
@@ -297,8 +297,6 @@ void update(
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
 
-                    double const tmp_rho = rho[xyz]; // load density
-                    double const inv_rho = 1/tmp_rho;
           #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
                     double const tmp_phi = ph(x, y, z);
                     // calculate phi-gradients
@@ -328,18 +326,15 @@ void update(
                     grad_phi_y += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
                     grad_phi_z += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
 
-//                     grad_phi_x += (ph(x+1, y+1, z) - ph(x-1, y+1, z) + ph(x+1, y-1, z) - ph(x-1, y-1, z))*inv_w2;
-//                     grad_phi_y += (ph(x+1, y+1, z) + ph(x-1, y+1, z) - ph(x-1, y-1, z) - ph(x+1, y-1, z))*inv_w2;
-//                     grad_phi_z += (ph(x+1, y, z+1) + ph(x-1, y, z+1) - ph(x-1, y, z-1) - ph(x+1, y, z-1))*inv_w2;
-//                     grad_phi_x += (ph(x+1, y, z+1) - ph(x-1, y, z+1) + ph(x+1, y, z-1) - ph(x-1, y, z-1))*inv_w2;
-//                     grad_phi_y += (ph(x, y+1, z+1) + ph(x, y+1, z-1) - ph(x, y-1, z+1) - ph(x, y-1, z-1))*inv_w2;
-//                     grad_phi_z += (ph(x, y+1, z+1) + ph(x, y-1, z+1) - ph(x, y-1, z-1) - ph(x, y+1, z-1))*inv_w2;
           #undef ph // abbreviation
 
+                    double const tmp_rho = rho[xyz]; // load density
+                    double const inv_rho = 1/tmp_rho;
+
                     // interparticular potential in equilibrium velocity
-                    double const tmp_ux = ux[xyz] - tau*(G*tmp_phi*grad_phi_x)*inv_rho;
-                    double const tmp_uy = uy[xyz] - tau*(G*tmp_phi*grad_phi_y)*inv_rho;
-                    double const tmp_uz = uz[xyz] - tau*(G*tmp_phi*grad_phi_z)*inv_rho;
+                    double tmp_ux = ux[xyz] - tau*(G*tmp_phi*grad_phi_x)*inv_rho;
+                    double tmp_uy = uy[xyz] - tau*(G*tmp_phi*grad_phi_y)*inv_rho;
+                    double tmp_uz = uz[xyz] - tau*(G*tmp_phi*grad_phi_z)*inv_rho;
 
                     // load again
                     auto const fp = f_previous[xyz]; // get a 1D subview
@@ -365,6 +360,10 @@ void update(
 
 // ----------------------------------------------------// multi-phase //---------------------------------------end
 #endif // MultiPhase
+                    // add the body force (now in the second loop?)
+                    tmp_ux += tau*body_force_xyz[0];
+                    tmp_uy += tau*body_force_xyz[1];
+                    tmp_uz += tau*body_force_xyz[2];
 
                     ux[xyz] = tmp_ux;
                     uy[xyz] = tmp_uy; // store current directions
