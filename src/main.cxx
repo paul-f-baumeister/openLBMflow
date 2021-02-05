@@ -181,7 +181,7 @@ inline void propagate(
 // } // equilibrium
 
 // kernel (performance critical code section)
-template <typename real_t>
+template <typename real_t, bool multiphase>
 void update(
       view2D<real_t> & fn // output populations fn(xyz, q)
     , double       *restrict const rho // output density
@@ -703,6 +703,11 @@ double run(
     #error "only 3D version available"
 #endif  
     
+#ifdef MultiPhase
+    bool constexpr multiphase = true;
+#else
+    bool constexpr multiphase = false;
+#endif
     
     int const Nx = nx;
     int const Ny = ny; 
@@ -720,10 +725,8 @@ double run(
     size_t const t_mem = (  sizeof(char)  *1 
                           + sizeof(double)*4
                           + sizeof(real_t)*2*Q_aligned
-#ifdef MultiPhase
-                          + sizeof(double)*1 // does not account for phi-halos
-#endif
-                           ) * nx*ny*nz;
+                          + sizeof(double)*int(multiphase) // does not account for phi-halos
+                           ) * nz*ny*nx;
     printf("LBM  needs %.6f GiByte total for D%dQ%d with (%d x %d x %d) cells.\n", 
                 t_mem/double(1ull << 30), stencil.D, stencil.Q, nx, ny, nz);
 
@@ -747,17 +750,15 @@ double run(
     auto f1 = f1_memory.transpose();
 #endif
 
+
     // observables
     // ToDo: group together into a view2D<double> that can be switched between SoA[4][NzNyNx_aligned] and AoS[NzNyNx][4];
     auto const rho   = get_memory<double>(NzNyNx_aligned, 0.0);
     auto const ux    = get_memory<double>(NzNyNx_aligned);
     auto const uy    = get_memory<double>(NzNyNx_aligned);
     auto const uz    = get_memory<double>(NzNyNx_aligned);
-#ifdef MultiPhase
-    auto    const phi = get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)); // this array has halo-borders and needs to be indexed using phindex(x,y,z)
-#else
-    double* const phi = nullptr;
-#endif
+    // this array has halo-borders and needs to be indexed using phindex(x,y,z);
+    auto const phi = multiphase ? get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)) : nullptr; 
 
     int const boundary[3][2] = { {boundary_lef, boundary_rig},
                                  {boundary_bot, boundary_top},
@@ -805,8 +806,8 @@ double run(
         } // measure and dump data as .vti files
 
         // calculate the distribution function for the next two time steps
-        update(f1, rho, ux, uy, uz, f0, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
-        update(f0, rho, ux, uy, uz, f1, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
+        update<real_t, multiphase>(f1, rho, ux, uy, uz, f0, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
+        update<real_t, multiphase>(f0, rho, ux, uy, uz, f1, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
     } // t
 
 #ifndef SuppressIO
