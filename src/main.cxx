@@ -28,6 +28,7 @@
 #include <cstring>
 #include <cassert> // assert
 #include <numeric> // std::accumulate
+#include <vector> // std::vector<T>
 
 typedef size_t index_t; // defines the integer data type for direct indexing
 
@@ -623,8 +624,8 @@ double outputSave(
     , double const phi[]
     , int const ranks[3]
     , int const myrank
-    , int const Nx, int const Ny, int const Nz
-    , int const nx, int const ny, int const nz
+    , int const Nx, int const Ny, int const Nz //  local lattice sites
+    , int const nx, int const ny, int const nz // global lattice sites
     , int const save_rho
     , int const save_pre
     , int const save_vel
@@ -635,21 +636,22 @@ double outputSave(
     double time_stop = wall_clock(); // stop internal timer
 
     // calculate performance in units of Mega Lattice Site Updates per second: MLUP/s
-    double const Speed = ((nx*ny)*(nz*1e-6)*(time - step_start)/(time_stop - timer_start)); // use global lattice sizes nx,ny,nz
+    double const Speed = ((nz*ny)*(nx*1e-6)*(time - step_start)/(time_stop - timer_start));
     step_start = time;
 
-    double const mass = std::accumulate(rho, rho + Nx*Ny*Nz, 0.0);
+    double const mass = std::accumulate(rho, rho + Nz*Ny*Nx, 0.0);
+    // ToDo: MPI_Allreduce(mass)
 
     auto const is_master = (0 == myrank);
     if (is_master) printf("t=%d\tSpeed=%f MLUP/s mass=%f\n", time, Speed, mass);
 
     int const nall = nx*ny*nz;
     int const offs[3] = {ranks[0]*Nx, ranks[1]*Ny, ranks[2]*Nz};
-    auto const rho_all = (save_rho) ? get_memory<real_t>(nall) : nullptr;
-    auto const pre_all = (save_pre) ? get_memory<real_t>(nall) : nullptr;
-    real_t* vel_all[3] = {nullptr, nullptr, nullptr};
-    for(int d = 0; d < 3*save_vel; ++d) {
-        vel_all[d] = get_memory<real_t>(nall);
+    std::vector<real_t> rho_all(save_rho*nall);
+    std::vector<real_t> pre_all(save_pre*nall);
+    std::vector<real_t> vel_all[3];
+    for(int d = 0; d < 3; ++d) {
+        vel_all[d] = std::vector<real_t>(save_vel*nall);
     } // d
 
     for (int x = 0; x < Nx; ++x) {
@@ -670,18 +672,12 @@ double outputSave(
 
     if (is_master) {
 #ifndef SuppressIO
-        lbm_visualization::writeVTK(time, nx, ny, nz, "output", "openLBMflow", 
-                        rho_all, pre_all, vel_all[0], vel_all[1], vel_all[2]);
+        lbm_visualization::writeVTK(time, nx, ny, nz, "output", "openLBMflow",
+                        rho_all.data(), pre_all.data(), vel_all[0].data(), vel_all[1].data(), vel_all[2].data());
 #else
         std::printf("# SuppressIO for writeVTK\n");
 #endif
     } // is_master
-
-    if (rho_all) delete[] rho_all;
-    if (pre_all) delete[] pre_all;
-    for(int d = 0; d < 3*save_vel; ++d) {
-        if (vel_all[d]) delete[] vel_all[d];
-    } // d
 
     timer_start = wall_clock(); // start internal timer again
     return Speed;
