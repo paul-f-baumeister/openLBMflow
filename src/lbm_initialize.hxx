@@ -27,8 +27,7 @@ namespace lbm_initialize {
         view2D<real_t> & populations // result: mover populations(xyz,q)
       , Stencil const & stencil
       , int const NzNyNx
-      , CellInfo const solid[]
-//    , char   const *restrict const solid
+      , CellInfo const cell[]
       , double const *restrict const rho
       , double const *restrict const ux
       , double const *restrict const uy
@@ -36,7 +35,7 @@ namespace lbm_initialize {
   ) {
 
       for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
-          if (!solid[xyz].is_solid()) {
+          if (cell[xyz].is_liquid()) {
               double const rho_tmp = rho[xyz];
               double const ux_tmp = ux[xyz];
               double const uy_tmp = uy[xyz]; // here, a more complex flow field could be initialized
@@ -54,7 +53,7 @@ namespace lbm_initialize {
                   populations(xyz, q) = feq;
               } // q
 
-          } // solid
+          } // is_liquid
       } // xyz
 
   } // initialize_distrFunc
@@ -62,8 +61,7 @@ namespace lbm_initialize {
   
   template <typename real_t>
   void initialize_boundary(
-        CellInfo solid[]
-//      char   *restrict const solid
+        CellInfo cell[]
       , real_t *restrict const rho
       , real_t *restrict const ux
       , real_t *restrict const uy
@@ -76,7 +74,7 @@ namespace lbm_initialize {
 
       // initialize type of cells
       for (index_t xyz = 0; xyz < Nz*Ny*Nx; ++xyz) {
-          assert(!solid[xyz].is_solid());
+          assert(cell[xyz].is_liquid());
       } // xyz
 
       // define Half way Bounce Back Boundary condition
@@ -88,8 +86,7 @@ namespace lbm_initialize {
                   for (int z = 0; z < Nz; ++z) {
                       for (int y = 0; y < Ny; ++y) {
                           index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on left/right boundary, x==min/max
-//                        solid[xyz] = 3 + lu;
-                          solid[xyz].set_solid();
+                          cell[xyz].set_solid();
                           rho[xyz] = rho_solid;
                       } // y
                   } // z
@@ -102,8 +99,7 @@ namespace lbm_initialize {
                   for (int z = 0; z < Nz; ++z) {
                       for (int x = 0; x < Nx; ++x) {
                           index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on bottom/top boundary, y==min/max
-//                        solid[xyz] = 1 + lu;
-                          solid[xyz].set_solid();
+                          cell[xyz].set_solid();
                           rho[xyz] = rho_solid;
                           // specialty of the y-direction:
                           if (0 != wall_speed[dir][lu]) {
@@ -122,8 +118,7 @@ namespace lbm_initialize {
                   for (int y = 0; y < Ny; ++y) {
                       for (int x = 0; x < Nx; ++x) {
                           index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on front/back boundary, z==min/max
-//                        solid[xyz] = 5 + lu;
-                          solid[xyz].set_solid();
+                          cell[xyz].set_solid();
                           rho[xyz] = rho_solid;
                       } // x
                   } // y
@@ -136,20 +131,18 @@ namespace lbm_initialize {
 
   void initialize_density(
         double *restrict const rho // result
-//       , char const *restrict const solid
-      , CellInfo const *restrict const solid
+      , CellInfo const cell[]
       , double const value
       , int const NzNyNx
   ) {
       for (index_t xyz = 0; xyz < NzNyNx; ++xyz) {
-          if (!solid[xyz].is_solid()) rho[xyz] = value;
+          if (cell[xyz].is_liquid()) rho[xyz] = value;
       } // xyz
   } // initialize_density
-  
+
   void initialize_droplet(
         double     *restrict const rho // in/output density
-//       , char const *restrict const solid
-      , CellInfo const *restrict const solid
+      , CellInfo const cell[]
       , int const Nx, int const Ny, int const Nz
       , double const dx, double const dy, double const dz // droplet center
       , double const dr // droplet radius
@@ -164,16 +157,17 @@ namespace lbm_initialize {
           for (int y = 0; y < Ny; ++y) {
               for (int x = 0; x < Nx; ++x) {
                   index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                  if (!solid[xyz].is_solid()) {
+                  if (cell[xyz].is_liquid()) {
                       auto const radius = std::sqrt(pow2(x - dx) + pow2(y - dy) + pow2(z - dz));
-                      auto const tmp = 0.5*(rho_sum - rho_diff*std::tanh(2.0*(radius - dr)/ifaceW));
-                      if (tmp > rho[xyz]) rho[xyz] = tmp;
-                  } // solid
+                      auto const tmp_rho = 0.5*(rho_sum - rho_diff*std::tanh(2.0*(radius - dr)/ifaceW));
+                      if (tmp_rho > rho[xyz]) rho[xyz] = tmp_rho;
+                  } // is_liquid
               } // x
           } // y
       } // z
+
   } // initialize_droplet
-  
+
   
   
 #ifdef  NO_UNIT_TESTS

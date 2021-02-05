@@ -179,8 +179,7 @@ void update(
     , BKG_stencil<3,19> const & stencil
     , double const tau
     , int const Nx, int const Ny, int const Nz
-//     , char   const *restrict const solid
-    , CellInfo const *restrict const solid
+    , CellInfo const cell[]
     , double const body_force[3]
     , double const top_wall_speed
     , double const bot_wall_speed
@@ -204,7 +203,7 @@ void update(
             for (int y = 0; y < Ny; ++y) {
                 for (int x = 0; x < Nx; ++x) {
                     index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                    if (!solid[xyz].is_solid()) {
+                    if (cell[xyz].is_liquid()) {
 
                         auto const fp = f_previous[xyz]; // get a 1D subview
                         // calculate only rho
@@ -230,11 +229,11 @@ void update(
                         } // q
 #endif // ALLOW_DEVIATIONS
                         rho[xyz] = tmp_rho; // store density
-                    } // solid
+                    } // is_liquid
                     // calculate interparticular force in multiphase Shan-Chen model
                     phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); 
-              } // x
-          } // y
+                } // x
+            } // y
         } // z
 
         transfer_phi_halos(phi, Nx, Ny, Nz); // make the halo-enlarged array periodic
@@ -245,7 +244,7 @@ void update(
         for (int y = 0; y < Ny; ++y) {
             for (int x = 0; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                if (!solid[xyz].is_solid()) {
+                if (cell[xyz].is_liquid()) {
   
                     double G_phi_grad_phi[3];
                     if (multiphase) {
@@ -419,7 +418,7 @@ void update(
 
                     // the loops for collide and propate are merged, otherwise we would need to store tmp_fn back into fp
                     propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz); // writes into fn, also propagates into solid boundary cells
-                } // solid
+                } // is_liquid
             } // x
         } // y
     } // z
@@ -429,14 +428,14 @@ void update(
         for (int y = 0; y < Ny; ++y) {
             for (int x = 0 ; x < Nx; ++x) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny);
-                if (!solid[xyz].is_solid()) {
+                if (cell[xyz].is_liquid()) {
                     // invoke propagate here, if propagate is separated from collide: copy fp into tmp_fp and call propagate(x, y, z, tmp_fp, fn)
                 } else {
                     real_t tmp_fn[Q];
                     // reflect velocities by swapping the corresponding populations
                     solid_cell_treatment(tmp_fn, fn, xyz, rho, stencil.opposite(), stencil.Q, top_wall_speed, bot_wall_speed);
                     propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz);
-                } // solid
+                } // is_liquid
             } // x
         } // y
     } // z
@@ -488,7 +487,6 @@ double run(
                 t_mem/double(1ull << 30), stencil.D, stencil.Q, nx, ny, nz);
 
     // cell info
-//     auto const solid = get_memory<char>(NzNyNx); // one Byte per cell
     auto const solid = get_memory<CellInfo>(NzNyNx, 0); // one Byte per cell
 
     // observables
