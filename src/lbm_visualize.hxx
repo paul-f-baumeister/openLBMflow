@@ -8,7 +8,7 @@
 #include <cstdio> // std::fprintf, std::snprintf, std::fopen, std::fclose
 #include <sys/stat.h> // mkdir
 
-namespace lbm_visualization {
+namespace lbm_visualize {
 
   void write_collection_pvd(
         int const nx, int const ny, int const nz
@@ -113,4 +113,83 @@ namespace lbm_visualization {
       std::fclose(f);
   } // writeVTK
 
-} // namespace lbm_visualization
+  
+inline double wall_clock() { return clock()/double(CLOCKS_PER_SEC); }
+
+template <typename real_t=double>
+double outputSave(
+      int const time
+    , double const rho[]
+    , double const ux[]
+    , double const uy[]
+    , double const uz[]
+    , double const phi[] 
+    , int const ranks[3]
+    , int const myrank
+    , int const Nx, int const Ny, int const Nz //  local lattice sites
+    , int const nx, int const ny, int const nz // global lattice sites
+    , int const save_rho
+    , int const save_pre
+    , int const save_vel
+    , double const G
+) {
+    static double timer_start, step_start{0};
+
+    double time_stop = wall_clock(); // stop internal timer
+
+    // calculate performance in units of Mega Lattice Site Updates per second: MLUP/s
+    double const Speed = ((nz*ny)*(nx*1e-6)*(time - step_start)/(time_stop - timer_start));
+    step_start = time;
+
+    double const mass = std::accumulate(rho, rho + Nz*Ny*Nx, 0.0);
+    // ToDo: MPI_Allreduce(mass)
+
+    auto const is_master = (0 == myrank);
+    if (is_master) {
+        printf("t= %d\tSpeed= %.1f MLUP/s mass= %.9f\n", time, Speed, mass);
+#ifndef SuppressIO
+    } // is_master
+
+    int const nall = nx*ny*nz;
+    int const offs[3] = {ranks[0]*Nx, ranks[1]*Ny, ranks[2]*Nz};
+    std::vector<real_t> rho_all(save_rho*nall);
+    std::vector<real_t> pre_all(save_pre*nall);
+    std::vector<real_t> vel_all[3];
+    for(int d = 0; d < 3; ++d) {
+        vel_all[d] = std::vector<real_t>(save_vel*nall);
+    } // d
+
+    for (int x = 0; x < Nx; ++x) {
+        for (int y = 0; y < Ny; ++y) {
+            for (int z = 0; z < Nz; ++z) {
+                index_t const xyz = indexyz(x, y, z, Nx, Ny); // local index into rho, ux, uy, uz
+                size_t const gxyz = ((x + offs[0])*ny + (y + offs[1]))*nz + (z + offs[2]); // global index
+                if (save_rho) rho_all[gxyz] = rho[xyz];
+                if (save_pre) {
+                    pre_all[gxyz] = rho[xyz]/3.0;
+                    if (nullptr != phi) {
+                        pre_all[gxyz] += G*pow2(phi[phindex(x, y, z)])/6.0;
+                    }
+                } // save_pre
+                if (save_vel) {
+                    vel_all[0][gxyz] = ux[xyz];
+                    vel_all[1][gxyz] = uy[xyz];
+                    vel_all[2][gxyz] = uz[xyz];
+                } // velocities
+            } // z
+        } // y
+    } // x
+
+    if (is_master) {
+        lbm_visualize::writeVTK(time, nx, ny, nz, "output", "openLBMflow",
+                        rho_all.data(), pre_all.data(), vel_all[0].data(), vel_all[1].data(), vel_all[2].data());
+#else
+        std::printf("# SuppressIO for writeVTK\n");
+#endif
+    } // is_master
+
+    timer_start = wall_clock(); // start internal timer again
+    return Speed;
+} // outputSave
+  
+} // namespace lbm_visualize

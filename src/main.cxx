@@ -33,7 +33,7 @@
 typedef size_t index_t; // defines the integer data type for direct indexing
 
 #include "get_memory.hxx" // get_memory<T>
-#include "lbm_visualization.hxx" // write_collection_pvd, writeVTK
+
 #include "warnings.hxx" // warn, show_warnings
 
 #include "lbm_stencil.hxx" // BKG_stencil<D,Q>, qooo, q..., pow2
@@ -41,12 +41,12 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 
 #include "data_view.hxx" // view2D<T>
 
-#define restrict __restrict__
-
-#define wall_clock(noarg) ((double) clock()/((double) CLOCKS_PER_SEC))
-
-
+inline index_t indexyz(int const x, int const y, int const z, int const Nx, int const Ny) { return (z*Ny + y)*Nx + x; }
 #define phindex(x,y,z) ((x+1)*(Ny+2) + (y+1))*(Nz+2) + (z+1) // enlarged with a halo of thickness 1
+
+#include "lbm_visualize.hxx" // ::write_collection_pvd, ::writeVTK
+
+#define restrict __restrict__
 
 template <typename real_t>
 void transfer_phi_halos(
@@ -118,7 +118,6 @@ inline void solid_cell_treatment( // ToDo: reorder argument list
 
 } // solid_cell_treatment
 
-inline index_t indexyz(int const x, int const y, int const z, int const Nx, int const Ny) { return (z*Ny + y)*Nx + x; }
 
 // propagate-kernel (performance critical code section)
 template <typename real_t>
@@ -366,10 +365,6 @@ void update(
         #endif // ALLOW_DEVIATIONS
 
                         // interparticular potential in equilibrium velocity
-//                         tmp_ux -= tau*(G*tmp_phi*grad_phi_x)*inv_rho;
-//                         tmp_uy -= tau*(G*tmp_phi*grad_phi_y)*inv_rho;
-//                         tmp_uz -= tau*(G*tmp_phi*grad_phi_z)*inv_rho;
-                        
                         for(int d = 0; d < 3; ++d) {
                             force[d] -= G_phi_grad_phi[d]*inv_rho;
                         } // d
@@ -377,9 +372,6 @@ void update(
                     } // multiphase
 
                     // add the body force (now in the second loop?)
-//                     tmp_ux += tau*body_force[0];
-//                     tmp_uy += tau*body_force[1];
-//                     tmp_uz += tau*body_force[2];
                     tmp_ux += tau*force[0];
                     tmp_uy += tau*force[1];
                     tmp_uz += tau*force[2];
@@ -627,7 +619,9 @@ void initialize_droplet(
     } // z
 } // initialize_droplet
 
+#define wall_clock(noarg) ((double) clock()/((double) CLOCKS_PER_SEC))
 
+#if 0
 template <typename real_t=double>
 double outputSave(
       int const time
@@ -657,7 +651,12 @@ double outputSave(
     // ToDo: MPI_Allreduce(mass)
 
     auto const is_master = (0 == myrank);
-    if (is_master) printf("t=%d\tSpeed=%f MLUP/s mass=%f\n", time, Speed, mass);
+    if (is_master) {
+        std::printf("t=%d\tSpeed=%f MLUP/s mass=%f\n", time, Speed, mass);
+#ifdef SuppressIO
+        std::printf("# SuppressIO for writeVTK\n");
+#else
+    } // is_master
 
     int const nall = nx*ny*nz;
     int const offs[3] = {ranks[0]*Nx, ranks[1]*Ny, ranks[2]*Nz};
@@ -685,17 +684,15 @@ double outputSave(
     } // x
 
     if (is_master) {
-#ifndef SuppressIO
-        lbm_visualization::writeVTK(time, nx, ny, nz, "output", "openLBMflow",
+        lbm_visualize::writeVTK(time, nx, ny, nz, "output", "openLBMflow",
                         rho_all.data(), pre_all.data(), vel_all[0].data(), vel_all[1].data(), vel_all[2].data());
-#else
-        std::printf("# SuppressIO for writeVTK\n");
 #endif
     } // is_master
 
     timer_start = wall_clock(); // start internal timer again
     return Speed;
 } // outputSave
+#endif
 
 template <typename real_t> // floating point type of populations
 double run(
@@ -719,7 +716,7 @@ double run(
 #else
     bool constexpr multiphase = false;
 #endif
-    
+
     int const Nx = nx;
     int const Ny = ny; 
     int const Nz = nz; // local lattice sizes equal to global
@@ -808,7 +805,7 @@ double run(
     for (int t = 0; t <= time_total; t+=2) {
         if (0 == t % time_save) {
             // save output to VTK image file
-            auto const speed = outputSave(t, rho, ux, uy, uz, phi, ranks, myrank, Nx, Ny, Nz, nx, ny, nz, save_rho, save_pre, save_vel, G);
+            auto const speed = lbm_visualize::outputSave(t, rho, ux, uy, uz, phi, ranks, myrank, Nx, Ny, Nz, nx, ny, nz, save_rho, save_pre, save_vel, G);
             if (speed > 0) {
                 speed_stats[0] += 1;
                 speed_stats[1] += speed;
@@ -822,7 +819,7 @@ double run(
     } // t
 
 #ifndef SuppressIO
-    lbm_visualization::write_collection_pvd(nx, ny, nz, "openLBMflow", "output", time_total, time_save);
+    lbm_visualize::write_collection_pvd(nx, ny, nz, "openLBMflow", "output", time_total, time_save);
 #endif    
 
     // compute mean and deviation    

@@ -38,12 +38,12 @@ for path in \
     ## run and compare
     ./LBMflow && \
     ../tools/numdiff  ./output/openLBMflow_0000200.vti \
-            ../$path/reference/openLBMflow_0000200.vti   ## original source
-#                    ./ref/$path/openLBMflow_0000200.vti  ## previous versions in src/
+                   ./ref/$path/openLBMflow_0000200.vti  ## previous versions in src/ (see below)
+#             ../$path/reference/openLBMflow_0000200.vti   ## original source
     echo $path
     echo
 
-    ## save copy
+    ## save a copy to compare for exact zero between code changes that should not affect anyting
 #     mkdir -p ./ref/$path
 #     mv ./output/openLBMflow_0000200.vti ./ref/$path
 
