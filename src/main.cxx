@@ -41,12 +41,6 @@ typedef size_t index_t; // defines the integer data type for direct indexing
 
 #include "data_view.hxx" // view2D<T>
 
-
-// include file with initial parameters, only the preprocessor macros become effective
-void empty() {
-#include "openLBMFlow_conf.c"
-} // empty
-
 #define restrict __restrict__
 
 #define wall_clock(noarg) ((double) clock()/((double) CLOCKS_PER_SEC))
@@ -193,7 +187,7 @@ void update(
     , double const tau
     , int const Nx, int const Ny, int const Nz
     , char   const *restrict const solid
-    , double const *restrict const body_force_xyz
+    , double const body_force[3]
     , double const top_wall_speed
     , double const bot_wall_speed
     , double       *restrict const phi=nullptr // output phase field in the case of multiphase flow
@@ -259,47 +253,53 @@ void update(
                 index_t const xyz = indexyz(x, y, z, Nx, Ny);
                 if (!solid[xyz]) {
   
-                double grad_phi_x{0}, grad_phi_y{0}, grad_phi_z{0}, tmp_phi;
+//                 double grad_phi_x{0}, grad_phi_y{0}, grad_phi_z{0}, tmp_phi;
+                double G_phi_grad_phi[3];
                 if (multiphase) {
                         double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
 
                     #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
 
-                        tmp_phi = ph(x, y, z);
+                        double grad_phi[3];
                         // calculate phi-gradients
-                        grad_phi_x = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
-                        grad_phi_y = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
-                        grad_phi_z = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
+                        grad_phi[0] = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
+                        grad_phi[1] = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
+                        grad_phi[2] = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
 
                         // in the next three sections, every phi value is used twice
                         double const ph_ppo = ph(x+1, y+1, z);
                         double const ph_npo = ph(x-1, y+1, z);
                         double const ph_pno = ph(x+1, y-1, z);
                         double const ph_nno = ph(x-1, y-1, z);
-                        grad_phi_x += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
-                        grad_phi_y += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
+                        grad_phi[0] += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
+                        grad_phi[1] += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
 
                         double const ph_pop = ph(x+1, y, z+1);
                         double const ph_nop = ph(x-1, y, z+1);
                         double const ph_pon = ph(x+1, y, z-1);
                         double const ph_non = ph(x-1, y, z-1);
-                        grad_phi_z += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
-                        grad_phi_x += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
+                        grad_phi[2] += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
+                        grad_phi[0] += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
                         
                         double const ph_opp = ph(x, y+1, z+1);
                         double const ph_onp = ph(x, y-1, z+1);
                         double const ph_opn = ph(x, y+1, z-1);
                         double const ph_onn = ph(x, y-1, z-1);
-                        grad_phi_y += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
-                        grad_phi_z += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
+                        grad_phi[1] += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
+                        grad_phi[2] += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
 
+                        // central point
+                        double const G_phi = G*ph(x, y, z);
                     #undef ph // abbreviation
+
+                        for(int d = 0; d < 3; ++d) {
+                            G_phi_grad_phi[d] = G_phi*grad_phi[d];
+                        } // d
 
                     } // multiphase
 
-
-                    // load
                     auto const fp = f_previous[xyz]; // get a 1D subview
+                    // load
                     double const f_ooo = fp[q_ooo];
                     double const f_poo = fp[q_poo];
                     double const f_ppo = fp[q_ppo];
@@ -320,7 +320,6 @@ void update(
                     double const f_non = fp[q_non];
                     double const f_pon = fp[q_pon];
                     
-                    
                     // calculate rho and ux, uy, uz
                     auto const tmp_rho = f_ooo 
                                     + (f_poo + f_noo) 
@@ -336,45 +335,54 @@ void update(
 
                     double const inv_rho = 1.0/tmp_rho;
 
-                    // x-current        p      n
-                    double tmp_ux = ( (f_poo - f_noo) 
+                    //                p:positive, n:negative, o:origin
+                    // x-current         p       n      
+                    double tmp_ux = ( (f_poo - f_noo)
                                     + (f_ppo - f_nno) 
                                     + (f_pno - f_npo)
                                     + (f_pop - f_non)
                                     + (f_pon - f_nop) )*inv_rho;
 
-                    // y-current         p      n
+                    // y-current          p       n
                     double tmp_uy = ( (f_opo - f_ono) 
                                     + (f_ppo - f_nno) 
                                     + (f_npo - f_pno)
                                     + (f_opp - f_onn)
                                     + (f_opn - f_onp) )*inv_rho;
 
-                    // z-current          p      n
+                    // z-current           p       n
                     double tmp_uz = ( (f_oop - f_oon) 
                                     + (f_pop - f_non) 
                                     + (f_nop - f_pon)
                                     + (f_opp - f_onn)
                                     + (f_onp - f_opn) )*inv_rho;
-                                    
+                                
+                    double force[3] = {body_force[0], body_force[1], body_force[2]};
                     if (multiphase) {
 
         #ifndef ALLOW_DEVIATIONS
+                        // make sure the previous triple loop has produced the same density
                         assert(tmp_rho == rho[xyz]);
         #endif // ALLOW_DEVIATIONS
 
                         // interparticular potential in equilibrium velocity
-                        // load current directions
-                        tmp_ux -= tau*(G*tmp_phi*grad_phi_x)*inv_rho;
-                        tmp_uy -= tau*(G*tmp_phi*grad_phi_y)*inv_rho;
-                        tmp_uz -= tau*(G*tmp_phi*grad_phi_z)*inv_rho;
-                                    
+//                         tmp_ux -= tau*(G*tmp_phi*grad_phi_x)*inv_rho;
+//                         tmp_uy -= tau*(G*tmp_phi*grad_phi_y)*inv_rho;
+//                         tmp_uz -= tau*(G*tmp_phi*grad_phi_z)*inv_rho;
+                        
+                        for(int d = 0; d < 3; ++d) {
+                            force[d] -= G_phi_grad_phi[d]*inv_rho;
+                        } // d
+
                     } // multiphase
 
                     // add the body force (now in the second loop?)
-                    tmp_ux += tau*body_force_xyz[0];
-                    tmp_uy += tau*body_force_xyz[1];
-                    tmp_uz += tau*body_force_xyz[2];
+//                     tmp_ux += tau*body_force[0];
+//                     tmp_uy += tau*body_force[1];
+//                     tmp_uz += tau*body_force[2];
+                    tmp_ux += tau*force[0];
+                    tmp_uy += tau*force[1];
+                    tmp_uz += tau*force[2];
 
                     ux[xyz] = tmp_ux;
                     uy[xyz] = tmp_uy; // store current directions
@@ -696,12 +704,12 @@ double run(
     assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
 
 #include "openLBMFlow_conf.c"
-//  , nx, ny, nz                            from global variables (read-only)
-//  , boundary_*                            from global variables (read-only)
-//  , D, Q,                                 from global variables (read-only)
-//  , rhoh, rhol, rho_boundary, drop...     from global variables (read-only)
-//  , bot_wall_speed, top_wall_speed        from global variables (read-only)
-//  , total_time, time_save                 from global variables (read-only)
+//  , nx, ny, nz
+//  , boundary_*
+//  , rhoh, rhol, rho_boundary, drop...
+//  , bot_wall_speed, top_wall_speed
+//  , total_time, time_save  
+//  , ...
 #ifndef Lattice3D
     #error "only 3D version available"
 #endif  
@@ -716,7 +724,7 @@ double run(
     int const Ny = ny; 
     int const Nz = nz; // local lattice sizes equal to global
     int const NzNyNx = Nz*Ny*Nx; // here is some potential for memory alignment, but watch out for loop limits
-    auto const NzNyNx_aligned = (((NzNyNx - 1) >> 2) + 1) << 2;
+    auto const NzNyNx_aligned = (((NzNyNx - 1) >> 2) + 1) << 2; // align to 4 real_t
     assert(NzNyNx_aligned >= NzNyNx);
 
     
