@@ -66,10 +66,10 @@ namespace lbm_initialize {
       , real_t *restrict const ux
       , real_t *restrict const uy
       , real_t *restrict const uz
-      , int    const boundary[3][2]
+      , int    const boundary[3][2] // {{lef,rig},{bot,top},{fro,bac}}
       , double const rho_solid
       , int const Nx, int const Ny, int const Nz
-      , double const wall_speed[3][2] // lef,rig,bot,top,fro,bac
+      , double const wall_speed[3][2] // {{lef,rig},{bot,top},{fro,bac}}
   ) {
 
       // initialize type of cells
@@ -101,11 +101,13 @@ namespace lbm_initialize {
                           index_t const xyz = indexyz(x, y, z, Nx, Ny); // node on bottom/top boundary, y==min/max
                           cell[xyz].set_solid();
                           rho[xyz] = rho_solid;
-                          // specialty of the y-direction:
+                          // specialty of the y-direction: for the lid-driven cavity flow
                           if (0 != wall_speed[dir][lu]) {
                               ux[xyz] = wall_speed[dir][lu];
                               uy[xyz] = 0;
                               uz[xyz] = 0;
+//                               std::printf("# lbm: set wall speed [%g %g %g] on xyz=(%i %i %i)\n",
+//                                                             ux[xyz], uy[xyz], uz[xyz], x, y, z);
                           } // wall_speed flowing in x-direction
                       } // x
                   } // z

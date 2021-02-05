@@ -4,8 +4,6 @@ for i in {1..33}; do
     echo
 done
 
-#     examples/singlephase_couette_flow \
-#     examples/singlephase_lid_driven_cavity \
 for path in \
     source \
     examples/multiphase_drop_impact \
@@ -13,8 +11,10 @@ for path in \
     examples/multiphase_coalescence_impact \
     examples/multiphase_drop_on_drop_impact \
     examples/multiphase_rising_bubble \
+    examples/singlephase_couette_flow \
     examples/singlephase_poiseuille_flow_3D_channel \
     examples/singlephase_poiseuille_flow_plate \
+    examples/singlephase_lid_driven_cavity \
 ; do
 
     echo
@@ -31,15 +31,16 @@ for path in \
 
     ## recompile
     make -j -B FEAFLAGS="-D TIME_TOTAL=200 -D TIME_SAVE=200"
-    
+
     ## make sure we do not compare old files
     rm -rf output
-    
+
+    frame=0000200
     ## run and compare
-    ./LBMflow && \
-    ../tools/numdiff  ./output/openLBMflow_0000200.vti \
-            ../$path/reference/openLBMflow_0000200.vti   ## original source
-#                    ./ref/$path/openLBMflow_0000200.vti  ## previous versions in src/ (see below)
+    ./LBMflow $1 && \
+    ../tools/numdiff  ./output/openLBMflow_$frame.vti \
+            ../$path/reference/openLBMflow_$frame.vti   ## original source
+#                    ./ref/$path/openLBMflow_$frame.vti  ## previous versions in src/ (see below)
     echo $path
     echo
 

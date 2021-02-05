@@ -40,7 +40,7 @@ namespace data_view {
   ) {
       if (LowerBoundCheck) {
           if (index < 0) {
-              std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %li < 0)\n\n",
+              std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %lli < 0)\n\n",
                                                 Rank, at, rank, int64_t(index));
           }
           assert(0 <= index);
@@ -48,7 +48,7 @@ namespace data_view {
       #ifdef UpperBoundsCheck
           if (number > RangeUnknown) {
               if (index >= number) {
-                  std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %li >= %ld)\n\n", 
+                  std::fprintf(stderr, "\nERROR: view%dD at %p(i%i= %lli >= %lld)\n\n", 
                                                     Rank, at, rank, int64_t(index), int64_t(number));
               }
               assert(index < number);
@@ -183,8 +183,8 @@ private:
 
 
 // for view2D
-#define debug_printf(...) printf(__VA_ARGS__)
-// #define debug_printf(...)
+// #define debug_printf(...) printf(__VA_ARGS__)
+#define debug_printf(...)
 
 template <typename T, typename int_t=int32_t>
 class view2D {

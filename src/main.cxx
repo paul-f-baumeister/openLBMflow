@@ -29,11 +29,13 @@
 #include <cassert> // assert
 #include <numeric> // std::accumulate
 #include <vector> // std::vector<T>
+// #include <string> // std::string
 
 typedef size_t index_t; // defines the integer data type for direct indexing
 
 #include "get_memory.hxx" // get_memory<T>
 
+#include "control.hxx" // ::get
 #include "warnings.hxx" // warn, show_warnings
 
 #include "lbm_stencil.hxx" // BKG_stencil<D,Q>, qooo, q..., pow2
@@ -49,6 +51,7 @@ inline index_t indexyz(int const x, int const y, int const z, int const Nx, int 
 #include "lbm_initialize.hxx" // ::initialize_body_force, initialize_distrFunc
 #include "lbm_visualize.hxx" // ::write_collection_pvd, ::writeVTK, ::outputSave
 
+#include "lbm_monitor.hxx" // ::show_velocities
 
 template <typename real_t>
 void transfer_phi_halos(
@@ -92,7 +95,7 @@ void transfer_phi_halos(
 
 template <typename real_t>
 inline void solid_cell_treatment( // ToDo: reorder argument list
-      real_t        *restrict const tmp_fn // inout: tmp_fn[Q]
+      real_t        *restrict const tmp_fn // out: tmp_fn[Q]
     , view2D<real_t> const & fn  // fn[nxyz*Q] or fn[Q*nxyz]
     , index_t const xyz
     , double  const *restrict const rho // rho[nxyz]
@@ -416,8 +419,11 @@ void update(
                     tmp_fn[q_non] = f_non*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
                     tmp_fn[q_pon] = f_pon*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
 
+                    // in order to stabilize the mass conservation, we could do the following:
+                    // rho_new = sum(tmp_fn); tmp_fn[:] *= tmp_rho/rho_new;
+
                     // the loops for collide and propate are merged, otherwise we would need to store tmp_fn back into fp
-                    propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz); // writes into fn, also propagates into solid boundary cells
+                    propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz); // writes into fn, might also propagate into solid boundary cells
                 } // is_liquid
             } // x
         } // y
@@ -444,7 +450,8 @@ void update(
 
 template <typename real_t> // floating point type of populations
 double run(
-    int const myrank=0
+      int const echo=0 // log level
+    , int const myrank=0
 ) {
     assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
 
@@ -463,6 +470,9 @@ double run(
     bool constexpr multiphase = true;
 #else
     bool constexpr multiphase = false;
+    rhol = 1.0;
+    rhoh = 1.0;
+    G = 0.0;
 #endif
 
     int const Nx = nx;
@@ -548,12 +558,15 @@ double run(
     #define time_save  TIME_SAVE   // control the .vti-file output frequency at compile time using -DTIME_SAVE
 #endif
 
-    assert(0 == time_save % 2); // if the check point interval is an odd number, we cannot combine two time steps
+    int constexpr combine = 2; // 2:combine time steps, 1: swap f0 and f1 between timesteps
+    assert(0 == time_save % combine && "cannot combine two time steps");
 
     int const ranks[] = {0, 0, 0}; // 3D ranks for parallelization
 
+    int const time_monitor = control::get("time_monitor", -1.);
+
     // main iteration loop
-    for (int t = 0; t <= time_total; t+=2) {
+    for (int t = 0; t <= time_total; t += combine) {
         if (0 == t % time_save) {
             // save output to VTK image file
             auto const speed = lbm_visualize::outputSave(t, rho, ux, uy, uz, phi, ranks, myrank, Nx, Ny, Nz, nx, ny, nz, save_rho, save_pre, save_vel, G);
@@ -564,9 +577,19 @@ double run(
             } // speed
         } // measure and dump data as .vti files
 
+        if (time_monitor > 0 && 0 == (t % time_monitor)) {
+            // show only the front xy-plane (z=0)
+            std::printf("# time= %i\n", t);
+            lbm_monitor::show_vector_field(ux, uy, uz, Nx, Ny, Nz, 0);
+//             lbm_monitor::show_scalar(rho, Nx, Ny, Nz, 0);
+//             lbm_monitor::show_scalar(phi, Nx+2, Ny+2, Nz, 1);
+        } // show in terminal
+
         // calculate the distribution function for the next two time steps
         update<real_t, multiphase>(f1, rho, ux, uy, uz, f0, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
+        if (combine > 1) {
         update<real_t, multiphase>(f0, rho, ux, uy, uz, f1, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, top_wall_speed, bot_wall_speed, phi, G);
+        } else { std::swap(f1, f0); }
     } // t
 
 #ifndef SuppressIO
@@ -594,7 +617,6 @@ double run(
 int main(int argc, char *argv[]) {
 
     printf("openLBMflow v2.0.0 (c) 2010 www.lbmflow.com\n");
-
 #ifdef _GIT_KEY
     // stringify the value of a macro, two expansion levels needed
     #define macro2string(a) stringify(a)
@@ -604,8 +626,46 @@ int main(int argc, char *argv[]) {
     #undef  macro2string
 #endif // _GIT_KEY
 
-    run<double>();
-//     run<float>();
+    status_t stat(0);
+    int verbosity{3}; // set default verbosity low
+    for(int iarg = 1; iarg < argc; ++iarg) {
+        assert(nullptr != argv[iarg]);
+        char const ci0 = *argv[iarg]; // char #0 of command line argument #i
+        if ('-' == ci0) {
 
-    return 0;
+            // options (short or long)
+            char const ci1 = *(argv[iarg] + 1); // char #1 of command line argument #i
+            char const IgnoreCase = 32; // use with | to convert upper case chars into lower case chars
+            if ('-' == ci1) {
+
+                ++stat; warn("# ignored long command line option %s", argv[iarg]);
+
+            } else { // ci1
+
+                // short options with "-"
+                if ('h' == (ci1 | IgnoreCase)) {
+                    return 0; // show_help(argv[0]);
+                } else if ('v' == (ci1 | IgnoreCase)) {
+                    verbosity += 1 + 3*('V' == ci1); // increment by 'V':4, 'v':1
+//                 } else if ('t' == (ci1 | IgnoreCase)) {
+//                     ++run_tests; if (iarg + 1 < argc) test_unit = argv[iarg + 1];
+                } else {
+                    ++stat; warn("# ignored unknown command line option -%c", ci1);
+                } // ci1
+
+            } // ci1
+
+        } else // ci0
+        if ('+' == ci0) {
+            // std::printf("# argv[%i]= %s\n", iarg, argv[iarg]);
+            stat += control::command_line_interface(argv[iarg] + 1); // start after the '+' char
+        } else {
+            ++stat; warn("# ignored command line argument \'%s\'", argv[iarg]);
+        } // ci0
+    } // iarg
+
+    run<double>(verbosity);
+//     run<float>(verbosity);
+
+    return stat;
 } // main
