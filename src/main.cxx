@@ -209,7 +209,7 @@ void update(
 #ifdef MultiPhase
     // update rho to calculate phi
     for (int x = 0; x < Nx; ++x) {
-        for (int y = 0; y < Ny; ++y) { // ToDo: can be merged into a 1D loop
+        for (int y = 0; y < Ny; ++y) {
             for (int z = 0; z < Nz; ++z) {
                 index_t const xyz = indexyz(x, y, z, Nx, Ny, Nz);
                 if (!solid[xyz]) {
@@ -231,8 +231,8 @@ void update(
                     rho[xyz] = tmp_rho; // store density
                 } // solid
                 if (phi) phi[phindex(x, y, z)] = 1 - std::exp(-rho[xyz]); // calculate interparticular force in multiphase Shan-Chen model
-            } // z
-        } // y
+           } // z
+       } // y
     } // x
     assert(nullptr != phi);
 
@@ -250,31 +250,32 @@ void update(
 #ifdef MultiPhase
 
           #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
+
                     double const tmp_phi = ph(x, y, z);
                     // calculate phi-gradients
                     double grad_phi_x = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
                     double grad_phi_y = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
                     double grad_phi_z = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
-                    // every phi value is used twice, buffer them
+
+                    // in the next three sections, every phi value is used twice
                     double const ph_ppo = ph(x+1, y+1, z);
                     double const ph_npo = ph(x-1, y+1, z);
                     double const ph_pno = ph(x+1, y-1, z);
                     double const ph_nno = ph(x-1, y-1, z);
+                    grad_phi_x += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
+                    grad_phi_y += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
 
                     double const ph_pop = ph(x+1, y, z+1);
                     double const ph_nop = ph(x-1, y, z+1);
                     double const ph_pon = ph(x+1, y, z-1);
                     double const ph_non = ph(x-1, y, z-1);
+                    grad_phi_z += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
+                    grad_phi_x += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
                     
                     double const ph_opp = ph(x, y+1, z+1);
                     double const ph_onp = ph(x, y-1, z+1);
                     double const ph_opn = ph(x, y+1, z-1);
                     double const ph_onn = ph(x, y-1, z-1);
-
-                    grad_phi_x += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
-                    grad_phi_y += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
-                    grad_phi_z += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
-                    grad_phi_x += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
                     grad_phi_y += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
                     grad_phi_z += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
 
