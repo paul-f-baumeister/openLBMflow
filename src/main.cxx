@@ -223,7 +223,7 @@ inline void phi_force(
 
 // #define ALLOW_DEVIATIONS
 
-template <typename real_t, bool multiphase>
+template <typename real_t>
 inline void collide_D3Q19(
       real_t *restrict const tmp_fn // output populations fn(q)
     , double & rho // output density
@@ -303,10 +303,11 @@ inline void collide_D3Q19(
                         for(int d = 0; d < 3; ++d) {
                             force[d] -= G_phi_grad_phi[d]*inv_rho;
                         } // d
-                    }
+                    } // G_phi_grad_phi != nullptr
+                    
                     rho = tmp_rho; // store the density
 
-                    // add the body force and phi-gradients in multiphase
+                    // add the body force (and phi-gradients in multiphase)
                     tmp_ux += tau*force[0];
                     tmp_uy += tau*force[1];
                     tmp_uz += tau*force[2];
@@ -443,48 +444,7 @@ void update(
   
                     double G_phi_grad_phi[3];
                     if (multiphase) {
-#if 1
                         phi_force(G_phi_grad_phi, phi, x, y, z, Nx, Ny, Nz, G);
-#else
-                        double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
-
-                        double grad_phi[3];
-                        // calculate phi-gradients
-                        #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
-                        grad_phi[0] = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
-                        grad_phi[1] = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
-                        grad_phi[2] = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
-
-                        // in the next three sections, every phi value is used twice
-                        double const ph_ppo = ph(x+1, y+1, z);
-                        double const ph_npo = ph(x-1, y+1, z);
-                        double const ph_pno = ph(x+1, y-1, z);
-                        double const ph_nno = ph(x-1, y-1, z);
-                        grad_phi[0] += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
-                        grad_phi[1] += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
-
-                        double const ph_pop = ph(x+1, y, z+1);
-                        double const ph_nop = ph(x-1, y, z+1);
-                        double const ph_pon = ph(x+1, y, z-1);
-                        double const ph_non = ph(x-1, y, z-1);
-                        grad_phi[2] += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
-                        grad_phi[0] += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
-                        
-                        double const ph_opp = ph(x, y+1, z+1);
-                        double const ph_onp = ph(x, y-1, z+1);
-                        double const ph_opn = ph(x, y+1, z-1);
-                        double const ph_onn = ph(x, y-1, z-1);
-                        grad_phi[1] += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
-                        grad_phi[2] += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
-
-                        // central point
-                        double const G_phi = G*ph(x, y, z);
-                        #undef ph // abbreviation
-
-                        for(int d = 0; d < 3; ++d) {
-                            G_phi_grad_phi[d] = G_phi*grad_phi[d];
-                        } // d
-#endif
                     } // multiphase
 
                     auto const fp = f_previous[xyz]; // get a 1D subview
@@ -548,7 +508,6 @@ void update(
                                 
                     double force[3] = {body_force[0], body_force[1], body_force[2]};
                     if (multiphase) {
-
         #ifndef ALLOW_DEVIATIONS
                         // make sure the previous triple loop has produced the same density
                         assert(tmp_rho == rho[xyz]);
