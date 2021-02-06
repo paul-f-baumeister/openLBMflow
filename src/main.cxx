@@ -230,12 +230,10 @@ inline void collide_D3Q19(
     , double & ux
     , double & uy // output macroscopic velocities
     , double & uz
-    , view1D<real_t> const & fp // input previous populations fp(q)
+    , view1D<real_t const> const & fp // input previous populations fp(q)
     , BKG_stencil<3,19> const & stencil
-    , double const min_tau
-    , double const inv_tau
-    , int const x, int const y, int const z
     , double const tau
+    , double const inv_tau
     , double const body_force[3]
     , double const *restrict const G_phi_grad_phi=nullptr // input phase field in the case of multiphase flow
 ) {
@@ -305,16 +303,18 @@ inline void collide_D3Q19(
                         } // d
                     } // G_phi_grad_phi != nullptr
                     
-                    rho = tmp_rho; // store the density
-
                     // add the body force (and phi-gradients in multiphase)
                     tmp_ux += tau*force[0];
                     tmp_uy += tau*force[1];
                     tmp_uz += tau*force[2];
 
-                    ux = tmp_ux;
-                    uy = tmp_uy; // store current directions
-                    uz = tmp_uz;
+                    rho = tmp_rho; // store the density
+                    ux  = tmp_ux;
+                    uy  = tmp_uy;  // store current directions
+                    uz  = tmp_uz;
+
+                    auto const min_tau = 1 - inv_tau;
+
                     auto const ux2 = pow2(tmp_ux);
                     auto const uy2 = pow2(tmp_uy);
                     auto const uz2 = pow2(tmp_uz);
@@ -448,6 +448,13 @@ void update(
                     } // multiphase
 
                     auto const fp = f_previous[xyz]; // get a 1D subview
+#if 1                    
+                    real_t tmp_fn[Q];
+                    collide_D3Q19<real_t>(tmp_fn, rho[xyz], ux[xyz], uy[xyz], uz[xyz],
+                                  fp, stencil, tau, inv_tau, body_force,
+                                  multiphase ? G_phi_grad_phi : nullptr);
+#else
+                    
                     // load
                     double const f_ooo = fp[q_ooo];
                     double const f_poo = fp[q_poo];
@@ -575,6 +582,8 @@ void update(
 
                     // in order to stabilize the mass conservation, we could do the following:
                     // rho_new = sum(tmp_fn); tmp_fn[:] *= tmp_rho/rho_new;
+                    
+#endif
 
                     // the loops for collide and propate are merged, otherwise we would need to store tmp_fn back into fp
                     propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz); // writes into fn, might also propagate into solid boundary cells
