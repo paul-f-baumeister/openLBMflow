@@ -53,6 +53,9 @@ inline index_t indexyz(int const x, int const y, int const z, int const Nx, int 
 
 #include "lbm_monitor.hxx" // ::show_velocities
 
+// #include "lbm_examples.hxx" // Problem
+#include "lbm_domain.hxx" // Domain
+
 template <typename real_t>
 void transfer_phi_halos(
       real_t *restrict const phi // modified
@@ -170,6 +173,192 @@ inline void propagate(
 } // propagate
 
 
+
+inline void phi_force(
+      double G_phi_grad_phi[3] // result
+    , double const *restrict const phi // input phase field in the case of multiphase flow
+    , int const x, int const y, int const z
+    , int const Nx, int const Ny, int const Nz
+    , double const G // interparticular interaction potential
+) {
+                        double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
+
+                        double grad_phi[3];
+                        // calculate phi-gradients
+                        #define ph(X,Y,Z) phi[phindex((X), (Y), (Z))]
+                        grad_phi[0] = (ph(x+1, y, z) - ph(x-1, y, z))*inv_w1;
+                        grad_phi[1] = (ph(x, y+1, z) - ph(x, y-1, z))*inv_w1;
+                        grad_phi[2] = (ph(x, y, z+1) - ph(x, y, z-1))*inv_w1;
+
+                        // in the next three sections, every phi value is used twice
+                        double const ph_ppo = ph(x+1, y+1, z);
+                        double const ph_npo = ph(x-1, y+1, z);
+                        double const ph_pno = ph(x+1, y-1, z);
+                        double const ph_nno = ph(x-1, y-1, z);
+                        grad_phi[0] += (ph_ppo - ph_npo + ph_pno - ph_nno)*inv_w2;
+                        grad_phi[1] += (ph_ppo + ph_npo - ph_nno - ph_pno)*inv_w2;
+
+                        double const ph_pop = ph(x+1, y, z+1);
+                        double const ph_nop = ph(x-1, y, z+1);
+                        double const ph_pon = ph(x+1, y, z-1);
+                        double const ph_non = ph(x-1, y, z-1);
+                        grad_phi[2] += (ph_pop + ph_nop - ph_non - ph_pon)*inv_w2;
+                        grad_phi[0] += (ph_pop - ph_nop + ph_pon - ph_non)*inv_w2;
+                        
+                        double const ph_opp = ph(x, y+1, z+1);
+                        double const ph_onp = ph(x, y-1, z+1);
+                        double const ph_opn = ph(x, y+1, z-1);
+                        double const ph_onn = ph(x, y-1, z-1);
+                        grad_phi[1] += (ph_opp + ph_opn - ph_onp - ph_onn)*inv_w2;
+                        grad_phi[2] += (ph_opp + ph_onp - ph_onn - ph_opn)*inv_w2;
+
+                        // central point
+                        double const G_phi = G*ph(x, y, z);
+                        #undef ph // abbreviation
+
+                        for(int d = 0; d < 3; ++d) {
+                            G_phi_grad_phi[d] = G_phi*grad_phi[d];
+                        } // d
+} // phi_force
+
+// #define ALLOW_DEVIATIONS
+
+template <typename real_t, bool multiphase>
+inline void collide_D3Q19(
+      real_t *restrict const tmp_fn // output populations fn(q)
+    , double & rho // output density
+    , double & ux
+    , double & uy // output macroscopic velocities
+    , double & uz
+    , view1D<real_t> const & fp // input previous populations fp(q)
+    , BKG_stencil<3,19> const & stencil
+    , double const min_tau
+    , double const inv_tau
+    , int const x, int const y, int const z
+    , double const tau
+    , double const body_force[3]
+    , double const *restrict const G_phi_grad_phi=nullptr // input phase field in the case of multiphase flow
+) {
+                    // load
+                    double const f_ooo = fp[q_ooo];
+                    double const f_poo = fp[q_poo];
+                    double const f_ppo = fp[q_ppo];
+                    double const f_opo = fp[q_opo];
+                    double const f_npo = fp[q_npo];
+                    double const f_noo = fp[q_noo];
+                    double const f_nno = fp[q_nno];
+                    double const f_ono = fp[q_ono];
+                    double const f_pno = fp[q_pno];
+                    double const f_opp = fp[q_opp];
+                    double const f_oop = fp[q_oop];
+                    double const f_onp = fp[q_onp];
+                    double const f_onn = fp[q_onn];
+                    double const f_oon = fp[q_oon];
+                    double const f_opn = fp[q_opn];
+                    double const f_pop = fp[q_pop];
+                    double const f_nop = fp[q_nop];
+                    double const f_non = fp[q_non];
+                    double const f_pon = fp[q_pon];
+                    
+                    // calculate rho and ux, uy, uz
+                    auto const tmp_rho = f_ooo 
+                                    + (f_poo + f_noo) 
+                                    + (f_opo + f_ono) 
+                                    + (f_oop + f_oon)
+                                    
+                                    + (f_opp + f_onn)
+                                    + (f_onp + f_opn)
+                                    + (f_pop + f_non)
+                                    + (f_nop + f_pon)
+                                    + (f_ppo + f_nno)
+                                    + (f_npo + f_pno);
+
+                    double const inv_rho = 1.0/tmp_rho;
+
+                    //                p:positive, n:negative, o:origin
+                    // x-current         p       n      
+                    double tmp_ux = ( (f_poo - f_noo)
+                                    + (f_ppo - f_nno) 
+                                    + (f_pno - f_npo)
+                                    + (f_pop - f_non)
+                                    + (f_pon - f_nop) )*inv_rho;
+
+                    // y-current          p       n
+                    double tmp_uy = ( (f_opo - f_ono) 
+                                    + (f_ppo - f_nno) 
+                                    + (f_npo - f_pno)
+                                    + (f_opp - f_onn)
+                                    + (f_opn - f_onp) )*inv_rho;
+
+                    // z-current           p       n
+                    double tmp_uz = ( (f_oop - f_oon) 
+                                    + (f_pop - f_non) 
+                                    + (f_nop - f_pon)
+                                    + (f_opp - f_onn)
+                                    + (f_onp - f_opn) )*inv_rho;
+                                
+                    double force[3] = {body_force[0], body_force[1], body_force[2]};
+                    if (G_phi_grad_phi) {
+                        // interparticular potential in equilibrium velocity
+                        for(int d = 0; d < 3; ++d) {
+                            force[d] -= G_phi_grad_phi[d]*inv_rho;
+                        } // d
+                    }
+                    rho = tmp_rho; // store the density
+
+                    // add the body force and phi-gradients in multiphase
+                    tmp_ux += tau*force[0];
+                    tmp_uy += tau*force[1];
+                    tmp_uz += tau*force[2];
+
+                    ux = tmp_ux;
+                    uy = tmp_uy; // store current directions
+                    uz = tmp_uz;
+                    auto const ux2 = pow2(tmp_ux);
+                    auto const uy2 = pow2(tmp_uy);
+                    auto const uz2 = pow2(tmp_uz);
+                    auto const uxyz2 = ux2 + uy2 + uz2;
+                    
+                    // equilibrium(hw, uv, u2) = hw*(2 + 6*uv - 3*u2 + 9*uv*uv);
+                    
+                    auto const tmp_rho_inv_tau = tmp_rho*inv_tau;
+                    auto const w0 = 0.5*stencil.weight(0)*tmp_rho_inv_tau;
+                    tmp_fn[q_ooo] = f_ooo*min_tau + w0*(2 - 3*uxyz2);
+
+                    auto const w1 = 0.5*stencil.weight(1)*tmp_rho_inv_tau;
+                    tmp_fn[q_poo] = f_poo*min_tau + w1*(2 + 6*tmp_ux + 9*ux2 - 3*uxyz2);
+                    tmp_fn[q_noo] = f_noo*min_tau + w1*(2 - 6*tmp_ux + 9*ux2 - 3*uxyz2);
+                    tmp_fn[q_opo] = f_opo*min_tau + w1*(2 + 6*tmp_uy + 9*uy2 - 3*uxyz2);
+                    tmp_fn[q_ono] = f_ono*min_tau + w1*(2 - 6*tmp_uy + 9*uy2 - 3*uxyz2);
+                    tmp_fn[q_oop] = f_oop*min_tau + w1*(2 + 6*tmp_uz + 9*uz2 - 3*uxyz2);
+                    tmp_fn[q_oon] = f_oon*min_tau + w1*(2 - 6*tmp_uz + 9*uz2 - 3*uxyz2);
+
+                    auto const uxy2 = ux2 + uy2;
+                    auto const uyz2 = uy2 + uz2;
+                    auto const uzx2 = uz2 + ux2;
+                    auto const uxy = 2*tmp_ux*tmp_uy;
+                    auto const uyz = 2*tmp_uy*tmp_uz;
+                    auto const uzx = 2*tmp_uz*tmp_ux;
+
+                    auto const w2 = 0.5*stencil.weight(2)*tmp_rho_inv_tau;
+                    tmp_fn[q_ppo] = f_ppo*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
+                    tmp_fn[q_npo] = f_npo*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
+                    tmp_fn[q_nno] = f_nno*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
+                    tmp_fn[q_pno] = f_pno*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
+
+                    tmp_fn[q_opp] = f_opp*min_tau + w2*(2 + 6*(+tmp_uy + tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
+                    tmp_fn[q_onp] = f_onp*min_tau + w2*(2 + 6*(-tmp_uy + tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
+                    tmp_fn[q_onn] = f_onn*min_tau + w2*(2 + 6*(-tmp_uy - tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
+                    tmp_fn[q_opn] = f_opn*min_tau + w2*(2 + 6*(+tmp_uy - tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
+                    
+                    tmp_fn[q_pop] = f_pop*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
+                    tmp_fn[q_nop] = f_nop*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
+                    tmp_fn[q_non] = f_non*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
+                    tmp_fn[q_pon] = f_pon*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
+} // collide
+
+
+
 // kernel (performance critical code section)
 template <typename real_t, bool multiphase>
 void update(
@@ -210,7 +399,6 @@ void update(
 
                         auto const fp = f_previous[xyz]; // get a 1D subview
                         // calculate only rho
-// #define ALLOW_DEVIATIONS
 #ifndef ALLOW_DEVIATIONS
                         double const tmp_rho = double(fp[q_ooo])
                                         + (double(fp[q_poo]) + double(fp[q_noo])) 
@@ -243,6 +431,10 @@ void update(
 
     } // multiphase
 
+    
+    // for parallelization, we have to envoke collide + propagate first on
+    // the outer cells that have to exchange with other domains
+    
     for (int z = 0; z < Nz; ++z) {
         for (int y = 0; y < Ny; ++y) {
             for (int x = 0; x < Nx; ++x) {
@@ -251,6 +443,9 @@ void update(
   
                     double G_phi_grad_phi[3];
                     if (multiphase) {
+#if 1
+                        phi_force(G_phi_grad_phi, phi, x, y, z, Nx, Ny, Nz, G);
+#else
                         double constexpr inv_w2 = 1/36., inv_w1 = 2/36.; // weights for D3Q19
 
                         double grad_phi[3];
@@ -289,7 +484,7 @@ void update(
                         for(int d = 0; d < 3; ++d) {
                             G_phi_grad_phi[d] = G_phi*grad_phi[d];
                         } // d
-
+#endif
                     } // multiphase
 
                     auto const fp = f_previous[xyz]; // get a 1D subview
@@ -478,7 +673,9 @@ double run(
     int const Nx = nx;
     int const Ny = ny; 
     int const Nz = nz; // local lattice sizes equal to global
-    int const NzNyNx = Nz*Ny*Nx; // here is some potential for memory alignment, but watch out for loop limits
+    Domain domain(Nx, Ny, Nz);
+//     int const NzNyNx = Nz*Ny*Nx; // here is some potential for memory alignment, but watch out for loop limits
+    int const NzNyNx = domain.volume();
     auto const NzNyNx_aligned = (((NzNyNx - 1) >> 2) + 1) << 2; // align to 4 real_t
     assert(NzNyNx_aligned >= NzNyNx);
 
@@ -580,7 +777,8 @@ double run(
         if (time_monitor > 0 && 0 == (t % time_monitor)) {
             // show only the front xy-plane (z=0)
             std::printf("# time= %i\n", t);
-            lbm_monitor::show_vector_field(ux, uy, uz, Nx, Ny, Nz, 0);
+//             lbm_monitor::show_vector_field(ux, uy, uz, Nx, Ny, Nz, Nz/2);
+            lbm_monitor::show_vector_field(ux, uy, uz, domain, Nz/2);
 //             lbm_monitor::show_scalar(rho, Nx, Ny, Nz, 0);
 //             lbm_monitor::show_scalar(phi, Nx+2, Ny+2, Nz, 1);
         } // show in terminal

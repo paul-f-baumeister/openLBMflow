@@ -8,14 +8,12 @@
 // (3*21) bit interleaved coordinates
 #include "global_coordinates.hxx" // ::get
 
+// #include "lbm_domain.hxx" // Domain
+
 class Geometry {
   // global cell description
-private:
-  // members
-  uint32_t periodic_[3];
-
 public:
-  
+
   Geometry(size_t const period[3]=nullptr) {
 
       uint32_t constexpr MaxPeriod = (1ul << 21); // wrap round for global_coordinates
@@ -30,6 +28,12 @@ public:
                 , periodic_[0]*.001, periodic_[1]*.001, periodic_[2]*.001, product*1e-6);
 
   } // [default] constructor
+  
+  int32_t periodic(int const d) const { assert(0 <= d); (d < 3); return periodic_[d]; }
+
+private:
+  // members
+  uint32_t periodic_[3];
 
 }; // class Geometry
 

@@ -3,32 +3,31 @@
 #include <cstdio> // std::printf
 #include <cassert> // assert
 #include <cstring> // std::strncpy
+#include <cstdint> // uint32_t, int32_t
 
 #include "status.hxx" // status_t
 
 class Domain {
   // rectangular 3D domain of lattice points
-private:
-  // static members
-  int static constexpr id_Length = 7;
-  // members
-  int32_t n_[3]; // number of grid points
-  int32_t offset_[3];
-  char id_[id_Length + 1];
 
 public:
   
-  Domain(int32_t const extent=0, char const *id="?^3") {
+  Domain(int32_t const extent=0, char const *name="?^3", uint32_t const id=-1) {
       int32_t const extent_cubic[] = {extent, extent, extent};
-      constructor(extent_cubic, id);
+      constructor(extent_cubic, name, id);
   } // [default] constructor
 
-  Domain(int32_t const extent[3], char const *id="???") {
-      constructor(extent, id);
+  Domain(int const nx, int const ny, int const nz, char const *name="xyz", uint32_t const id=-1) {
+      int32_t const extent[] = {nx, ny, nz};
+      constructor(extent, name, id);
+  } // constructor
+
+  Domain(int32_t const extent[3], char const *name="???", uint32_t const id=-1) {
+      constructor(extent, name, id);
   } // constructor
 
   // number of all grid points
-  size_t n() const { return size_t(n_[0])*size_t(n_[1])*size_t(n_[2]); }
+  size_t volume() const { return size_t(n_[0])*size_t(n_[1])*size_t(n_[2]); }
 
   int32_t n(int d) const {
       assert(0 <= d); assert(d < 3);
@@ -38,7 +37,7 @@ public:
   int32_t operator [](char direction) const {
       return n((direction | 32) - 'x');
   } // []
-  
+
   int32_t operator [](int d) const {
       assert(0 <= d); assert(d < 3);
       return n_[d];
@@ -49,8 +48,8 @@ public:
       return n_[d] - 1;
   } // m == n - 1
 
-  int32_t const * global_coordinate_offset() const { return offset_; }
-  int32_t const * extent() const { return n_; }
+  int32_t const* global_coordinate_offset() const { return offset_; }
+  int32_t const* extent() const { return n_; }
 
   // local coordinates of the neighboring +/-1 (or more) lattice points
   template <char Direction>
@@ -72,10 +71,13 @@ public:
       } // dir
   } // neighbor
 
+  size_t id() const { return id_; }
+  char const* name() const { return name_; }
+  
 private:
 
-  void constructor(int32_t const extent[3], char const *id) {
-
+  void constructor(int32_t const extent[3], char const *name, int32_t const id=-1) {
+      id_ = id;
       int32_t constexpr MaxExtent = (1l << 21); // wrap round for global_coordinates
       size_t product{1};
       for(int d = 0; d < 3; ++d) {
@@ -87,16 +89,25 @@ private:
       } // d
 
       if (product > 0) {
-          std::strncpy(id_, id, id_Length); // copy the identifyer
-          id_[id_Length] = '\0'; // ensure null-termination
+          std::strncpy(name_, name, name_Length); // copy the identifyer
+          name_[name_Length] = '\0'; // ensure null-termination
 
           std::printf("# Domain: %d x %d x %d = %.3f k lattice sites, id=%s\n",
-                          n_[0], n_[1], n_[2],  product*.001,         id_);
+                          n_[0], n_[1], n_[2],  product*.001,         name_);
       } else {
-          id_[0] = '_'; id_[1] = '\0'; // mark that there were no lattice sites
+          name_[0] = '_'; name_[1] = '\0'; // mark that there were no lattice sites
       } // default constructor is silent
 
   } // constructor
+
+private:
+  // static members
+  int static constexpr name_Length = 31;
+  // members
+  int32_t n_[3]; // number of grid points
+  int32_t offset_[3]; // global coordinates of the lattice site with local index (0,0,0)
+  int32_t id_; // global identifyer
+  char name_[name_Length + 1];
 
 }; // class Domain
 
@@ -110,6 +121,7 @@ namespace lbm_domain {
   inline status_t test_constructors(int const echo=0) {
       int32_t const n111[] = {1, 1, 1};
       Domain d000default, d000(0), dmin(n111, "1x1x1_long_name"); // envoke different constructors
+      std::printf("# %s: sizeof(Domain) = %ld Byte\n", __func__, sizeof(Domain));
       return 0;
   } // test_constructors
 

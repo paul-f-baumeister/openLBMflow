@@ -16,7 +16,7 @@
           real_t       *restrict const f_out // result vector[Q]
         , real_t const *restrict const f_in  // input  vector[Q]
         , stencil_t const & stencil
-        , double const tau=1
+        , double const tau=0.5
         , double const body_force_xyz[3]=nullptr
     ) {
 #ifdef  STANDALONE_TEST
@@ -24,17 +24,13 @@
 #endif
         int constexpr Q = stencil_t::Q;
         assert(19 == Q);
-        
+
         // relaxation time constant tau
         double const inv_tau = 1.0/tau;
         double const min_tau = 1.0 - inv_tau;
         double const half_wi0 = 0.5*stencil.weight(0), 
                      half_wi1 = 0.5*stencil.weight(1),
                      half_wi2 = 0.5*stencil.weight(2);
-
-//         for(int q = 0; q < Q; ++q) {
-//             f_out[q] = f_in[q]; // no relaxation
-//         } // q
 
                     double const f_ooo = f_in[q_ooo];
                     double const f_poo = f_in[q_poo];
@@ -99,8 +95,6 @@
                     tmp_uz += tau*body_force_xyz[2];
                 }
 //                     rho[xyz] = tmp_rho; // store density
-// ----------------------------------------------------// multi-phase //---------------------------------------begin
-// ----------------------------------------------------// multi-phase //---------------------------------------end
 //                     ux[xyz] = tmp_ux;
 //                     uy[xyz] = tmp_uy; // store current directions
 //                     uz[xyz] = tmp_uz;
@@ -173,7 +167,7 @@ namespace lbm_collide {
       
       real_t f[3][Q];
       double const rho = 1;
-      double const u[3] = {0.1, 0.2, -.15};
+      double const u[3] = {0.5, 0.2, -.15};
       auto const u2 = pow2(u[0]) + pow2(u[1]) + pow2(u[2]);
       for(int q = 0; q < Q; ++q) {
           auto const v = stencil.velocity(q);
@@ -225,7 +219,7 @@ namespace lbm_collide {
   inline status_t all_tests(int const echo=0) {
       status_t stat(0);
       stat += test_stencils<double>(echo);
-      stat += test_stencils<float> (echo);
+//       stat += test_stencils<float> (echo);
       return stat;
   } // all_tests
 

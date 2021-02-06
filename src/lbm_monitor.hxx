@@ -8,10 +8,7 @@
 
 #include "status.hxx" // status_t
 
-#pragma once
-
-#include <cstdio> // std::printf
-
+#include "lbm_domain.hxx" // Domain
 
 namespace lbm_monitor {
 
@@ -88,14 +85,14 @@ namespace lbm_monitor {
         real_t const ux[]
       , real_t const uy[]
       , real_t const uz[]
-      , int const Nx
-      , int const Ny
-      , int const Nz=1
+      , Domain const & domain
       , int const z=0
       , double const *const maxval=nullptr
       , double const *const minval=nullptr
   ) {
 
+      int const Nx = domain['x'], Ny = domain['y'], Nz = domain['z'];
+      assert(0 <= z); assert(z < Nz);
       // determine minimum and maximum in the data set
       double mini{9e33}, maxi{-9e33}; // init min and max
       for(int xy = 0; xy < Ny*Nx; ++xy) {

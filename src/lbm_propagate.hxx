@@ -155,11 +155,11 @@ namespace lbm_propagate {
       status_t stat(0);
 
       int constexpr Nx=3, Ny=5, Nz=7;
-      int constexpr Ntime=Nx*Ny*Nz; // make sure the number of time steps is a (or the least) common multiple
+      int constexpr Ntime=Nz*Ny*Nx; // make sure the number of time steps is a (or the least) common multiple
       int input{0};
       int const reference=2;
-      real_t f[3][Nx*Ny*Nz*Q];
-      for(int xyz = 0; xyz < Nx*Ny*Nz; ++xyz) {
+      real_t f[3][Nz*Ny*Nx*Q];
+      for(int xyz = 0; xyz < Nz*Ny*Nx; ++xyz) {
           for(int q = 0; q < Q; ++q) {
               int const index = xyz*Q + q;
               int const value = xyz*(1 + Q) + (1 + q); // initialize with 1+q (to avoid zero values)
@@ -175,22 +175,22 @@ namespace lbm_propagate {
       int output{-1};
       for(int time = 0; time < Ntime; ++time) { // run an even number of time steps
           output = 1 - input;
-          for(int x = 0; x < Nx; ++x) {
+          for(int z = 0; z < Nz; ++z) {
               for(int y = 0; y < Ny; ++y) {
-                  for(int z = 0; z < Nz; ++z) {
+                  for(int x = 0; x < Nx; ++x) {
                       int const xyz = (x*Ny + y)*Nz + z;
                       int const nq = propagate<real_t,BKG_stencil<D,Q>> (f[output],
                                             f[input] + xyz*Q, x, y, z, Nx, Ny, Nz);
                       assert(Q == nq);
-                  } // z
+                  } // x
               } // y
-          } // x
+          } // z
           input = 1 - input; // switch between 0 and 1 back and forth
       } // time
       assert(-1 != output && "Run at least one time step!"); 
 
       // check that the populations have kept their content exactly
-      for(int xyz = 0; xyz < Nx*Ny*Nz; ++xyz) {
+      for(int xyz = 0; xyz < Nz*Ny*Nx; ++xyz) {
           for(int q = 0; q < Q; ++q) {
               int const index = xyz*Q + q;
               auto const v_out = f[output][index]; // get last output
@@ -202,7 +202,7 @@ namespace lbm_propagate {
               stat += (v_out != v_ref);
           } // q
       } // xyz
-      
+
       if (0 != int(stat) && echo > 0) std::printf("# %s<D%dQ%d>: found %d errors!\n",
                                                     __func__, D, Q, int(stat));
       return stat;

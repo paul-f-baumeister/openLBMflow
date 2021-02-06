@@ -4,8 +4,8 @@
 #include <cstdio> // std::printf
 // #include <cmath> // std::tanh
 
-  template <typename real_t>
-  inline real_t pow2(real_t const v) { return v*v; } // ToDo: move to utils
+//   template <typename real_t>
+//   inline real_t pow2(real_t const v) { return v*v; } // ToDo: move to utils
 
   class Droplet {
   public:
