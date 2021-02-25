@@ -5,11 +5,15 @@
 
 #include "status.hxx" // status_t, STATUS_TEST_NOT_INCLUDED
 #include "lbm_stencil.hxx" // q_ooo, ..., q_nop, ...
+#include "data_view.hxx" // view4D<T>
+
+#ifndef restrict
+    #define restrict __restrict__
+#endif
 
     template <typename real_t, class Stencil>
     inline int propagate(
 #ifdef  STANDALONE_TEST
-        #define         restrict
           real_t       *restrict const fnew  // output
 #else  // STANDALONE_TEST
           view4D<real_t> & f_out // output --> view4D is an object that can transpose at runtime
@@ -159,6 +163,7 @@ namespace lbm_propagate {
       int input{0};
       int const reference=2;
       real_t f[3][Nz*Ny*Nx*Q];
+      
       for(int xyz = 0; xyz < Nz*Ny*Nx; ++xyz) {
           for(int q = 0; q < Q; ++q) {
               int const index = xyz*Q + q;

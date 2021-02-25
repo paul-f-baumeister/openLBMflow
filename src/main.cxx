@@ -33,7 +33,7 @@
 
 typedef size_t index_t; // defines the integer data type for direct indexing
 
-#include "get_memory.hxx" // get_memory<T>
+#include "get_memory.hxx" // get_memory<T>, free_memory<T>
 
 #include "control.hxx" // ::get
 #include "warnings.hxx" // warn, show_warnings
@@ -53,7 +53,7 @@ inline index_t indexyz(int const x, int const y, int const z, int const Nx, int 
 
 #include "lbm_monitor.hxx" // ::show_velocities
 
-// #include "lbm_examples.hxx" // Problem
+#include "lbm_examples.hxx" // Problem, get_example
 #include "lbm_domain.hxx" // Domain
 
 template <typename real_t>
@@ -382,10 +382,10 @@ void update(
     int constexpr Q = 19; assert(Q == stencil.Q);
     // relaxation time constant tau
     double const inv_tau = 1.0/tau;
-    double const min_tau = 1.0 - inv_tau;
-    double const half_wi0 = 0.5*stencil.weight(0), 
-                 half_wi1 = 0.5*stencil.weight(1),
-                 half_wi2 = 0.5*stencil.weight(2);
+//     double const min_tau = 1.0 - inv_tau;
+//     double const half_wi0 = 0.5*stencil.weight(0), 
+//                  half_wi1 = 0.5*stencil.weight(1),
+//                  half_wi2 = 0.5*stencil.weight(2);
 
 
     if (multiphase) {
@@ -433,9 +433,26 @@ void update(
     } // multiphase
 
     
+#if 0
     // for parallelization, we have to envoke collide + propagate first on
     // the outer cells that have to exchange with other domains
-    
+    for(int iprio = 0; iprio < nprio; ++iprio) {
+        auto const x = priority[iprio][0];
+        auto const y = priority[iprio][1];
+        auto const z = priority[iprio][2];
+        index_t const xyz = indexyz(x, y, z, Nx, Ny);
+        assert(cell[xyz].is_liquid());
+        assert(cell[xyz].is_priority());
+        //
+        // do collide
+        //
+    } // iprio
+
+    // copy boundary elements into send buffers and MPI_Send
+    // start to listen to MPI_Recv, return MPI request handle
+#endif
+
+
     for (int z = 0; z < Nz; ++z) {
         for (int y = 0; y < Ny; ++y) {
             for (int x = 0; x < Nx; ++x) {
@@ -448,151 +465,26 @@ void update(
                     } // multiphase
 
                     auto const fp = f_previous[xyz]; // get a 1D subview
-#if 1                    
+                    
                     real_t tmp_fn[Q];
                     collide_D3Q19<real_t>(tmp_fn, rho[xyz], ux[xyz], uy[xyz], uz[xyz],
                                   fp, stencil, tau, inv_tau, body_force,
                                   multiphase ? G_phi_grad_phi : nullptr);
-#else
-                    
-                    // load
-                    double const f_ooo = fp[q_ooo];
-                    double const f_poo = fp[q_poo];
-                    double const f_ppo = fp[q_ppo];
-                    double const f_opo = fp[q_opo];
-                    double const f_npo = fp[q_npo];
-                    double const f_noo = fp[q_noo];
-                    double const f_nno = fp[q_nno];
-                    double const f_ono = fp[q_ono];
-                    double const f_pno = fp[q_pno];
-                    double const f_opp = fp[q_opp];
-                    double const f_oop = fp[q_oop];
-                    double const f_onp = fp[q_onp];
-                    double const f_onn = fp[q_onn];
-                    double const f_oon = fp[q_oon];
-                    double const f_opn = fp[q_opn];
-                    double const f_pop = fp[q_pop];
-                    double const f_nop = fp[q_nop];
-                    double const f_non = fp[q_non];
-                    double const f_pon = fp[q_pon];
-                    
-                    // calculate rho and ux, uy, uz
-                    auto const tmp_rho = f_ooo 
-                                    + (f_poo + f_noo) 
-                                    + (f_opo + f_ono) 
-                                    + (f_oop + f_oon)
-                                    
-                                    + (f_opp + f_onn)
-                                    + (f_onp + f_opn)
-                                    + (f_pop + f_non)
-                                    + (f_nop + f_pon)
-                                    + (f_ppo + f_nno)
-                                    + (f_npo + f_pno);
-
-                    double const inv_rho = 1.0/tmp_rho;
-
-                    //                p:positive, n:negative, o:origin
-                    // x-current         p       n      
-                    double tmp_ux = ( (f_poo - f_noo)
-                                    + (f_ppo - f_nno) 
-                                    + (f_pno - f_npo)
-                                    + (f_pop - f_non)
-                                    + (f_pon - f_nop) )*inv_rho;
-
-                    // y-current          p       n
-                    double tmp_uy = ( (f_opo - f_ono) 
-                                    + (f_ppo - f_nno) 
-                                    + (f_npo - f_pno)
-                                    + (f_opp - f_onn)
-                                    + (f_opn - f_onp) )*inv_rho;
-
-                    // z-current           p       n
-                    double tmp_uz = ( (f_oop - f_oon) 
-                                    + (f_pop - f_non) 
-                                    + (f_nop - f_pon)
-                                    + (f_opp - f_onn)
-                                    + (f_onp - f_opn) )*inv_rho;
-                                
-                    double force[3] = {body_force[0], body_force[1], body_force[2]};
-                    if (multiphase) {
-        #ifndef ALLOW_DEVIATIONS
-                        // make sure the previous triple loop has produced the same density
-                        assert(tmp_rho == rho[xyz]);
-        #endif // ALLOW_DEVIATIONS
-
-                        // interparticular potential in equilibrium velocity
-                        for(int d = 0; d < 3; ++d) {
-                            force[d] -= G_phi_grad_phi[d]*inv_rho;
-                        } // d
-                    } else {
-                        rho[xyz] = tmp_rho; // store the density
-                    } // multiphase
-
-                    // add the body force and phi-gradients in multiphase
-                    tmp_ux += tau*force[0];
-                    tmp_uy += tau*force[1];
-                    tmp_uz += tau*force[2];
-
-                    ux[xyz] = tmp_ux;
-                    uy[xyz] = tmp_uy; // store current directions
-                    uz[xyz] = tmp_uz;
-                    auto const ux2 = pow2(tmp_ux);
-                    auto const uy2 = pow2(tmp_uy);
-                    auto const uz2 = pow2(tmp_uz);
-                    auto const uxyz2 = ux2 + uy2 + uz2;
-
-                    real_t tmp_fn[Q];
-                    
-                    // equilibrium(hw, uv, u2) = hw*(2 + 6*uv - 3*u2 + 9*uv*uv);
-                    
-                    auto const tmp_rho_inv_tau = tmp_rho*inv_tau;
-                    auto const w0 = half_wi0*tmp_rho_inv_tau;
-                    tmp_fn[q_ooo] = f_ooo*min_tau + w0*(2 - 3*uxyz2);
-
-                    auto const w1 = half_wi1*tmp_rho_inv_tau;
-                    tmp_fn[q_poo] = f_poo*min_tau + w1*(2 + 6*tmp_ux + 9*ux2 - 3*uxyz2);
-                    tmp_fn[q_noo] = f_noo*min_tau + w1*(2 - 6*tmp_ux + 9*ux2 - 3*uxyz2);
-                    tmp_fn[q_opo] = f_opo*min_tau + w1*(2 + 6*tmp_uy + 9*uy2 - 3*uxyz2);
-                    tmp_fn[q_ono] = f_ono*min_tau + w1*(2 - 6*tmp_uy + 9*uy2 - 3*uxyz2);
-                    tmp_fn[q_oop] = f_oop*min_tau + w1*(2 + 6*tmp_uz + 9*uz2 - 3*uxyz2);
-                    tmp_fn[q_oon] = f_oon*min_tau + w1*(2 - 6*tmp_uz + 9*uz2 - 3*uxyz2);
-
-                    auto const uxy2 = ux2 + uy2;
-                    auto const uyz2 = uy2 + uz2;
-                    auto const uzx2 = uz2 + ux2;
-                    auto const uxy = 2*tmp_ux*tmp_uy;
-                    auto const uyz = 2*tmp_uy*tmp_uz;
-                    auto const uzx = 2*tmp_uz*tmp_ux;
-                            
-                    auto const w2 = half_wi2*tmp_rho_inv_tau;
-                    tmp_fn[q_ppo] = f_ppo*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
-                    tmp_fn[q_npo] = f_npo*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
-                    tmp_fn[q_nno] = f_nno*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uy) + 9*(uxy2 + uxy) - 3*uxyz2);
-                    tmp_fn[q_pno] = f_pno*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uy) + 9*(uxy2 - uxy) - 3*uxyz2);
-
-                    tmp_fn[q_opp] = f_opp*min_tau + w2*(2 + 6*(+tmp_uy + tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
-                    tmp_fn[q_onp] = f_onp*min_tau + w2*(2 + 6*(-tmp_uy + tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
-                    tmp_fn[q_onn] = f_onn*min_tau + w2*(2 + 6*(-tmp_uy - tmp_uz) + 9*(uyz2 + uyz) - 3*uxyz2);
-                    tmp_fn[q_opn] = f_opn*min_tau + w2*(2 + 6*(+tmp_uy - tmp_uz) + 9*(uyz2 - uyz) - 3*uxyz2);
-                    
-                    tmp_fn[q_pop] = f_pop*min_tau + w2*(2 + 6*(+tmp_ux + tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
-                    tmp_fn[q_nop] = f_nop*min_tau + w2*(2 + 6*(-tmp_ux + tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
-                    tmp_fn[q_non] = f_non*min_tau + w2*(2 + 6*(-tmp_ux - tmp_uz) + 9*(uzx2 + uzx) - 3*uxyz2);
-                    tmp_fn[q_pon] = f_pon*min_tau + w2*(2 + 6*(+tmp_ux - tmp_uz) + 9*(uzx2 - uzx) - 3*uxyz2);
 
                     // in order to stabilize the mass conservation, we could do the following:
                     // rho_new = sum(tmp_fn); tmp_fn[:] *= tmp_rho/rho_new;
-                    
-#endif
 
                     // the loops for collide and propate are merged, otherwise we would need to store tmp_fn back into fp
-                    propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz); // writes into fn, might also propagate into solid boundary cells
+                    propagate(fn, tmp_fn, x, y, z, Nx, Ny, Nz); // writes into fn, might also propagate into solid cells
                 } // is_liquid
             } // x
         } // y
     } // z
 
+    // wait until all MPI requests have been received
+
     // we have to treat the solid cells since some velocities may have penetrated them
+    // maybe better to have a list of wall cells
     for (int z = 0; z < Nz; ++z) {
         for (int y = 0; y < Ny; ++y) {
             for (int x = 0 ; x < Nx; ++x) {
@@ -702,13 +594,13 @@ double run(
 #ifdef AoS
     view2D<real_t> f0(NzNyNx, Q_aligned); // warp
     view2D<real_t> f1(NzNyNx, Q_aligned); // warp
+    #undef AoS
 #else
     view2D<real_t> f0_memory(Q_aligned, NzNyNx); // warp
     view2D<real_t> f1_memory(Q_aligned, NzNyNx); // warp
     auto f0 = f0_memory.transpose();
     auto f1 = f1_memory.transpose();
 #endif
-
     
     
     lbm_initialize::initialize_distrFunc(f0, stencil, NzNyNx, solid, rho, ux, uy, uz);
@@ -770,15 +662,188 @@ double run(
     printf("LBM  avgSpeed %.3f +/- %.3f MLUP/s\n", speed_stats[1], std::sqrt(speed_stats[2]));
 
     // free allocated memory
-    delete[] solid;
-    delete[] rho;
-    delete[] ux;
-    delete[] uy;
-    delete[] uz;
-    if (phi) delete[] phi;
+    free_memory(solid);
+    free_memory(rho);
+    free_memory(ux);
+    free_memory(uy);
+    free_memory(uz);
+    free_memory(phi);
 
     return speed_stats[1];
 } // run
+
+#ifdef time_total
+#undef time_total
+#endif
+
+#ifdef time_save
+#undef time_save
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+template <typename real_t> // floating point type of populations
+double run_problem(
+      int const echo=0 // log level
+    , int const myrank=0
+) {
+    assert(2*(1/real_t(2)) == 1); // real_t must be a floating point type
+
+    auto const problem = lbm_examples::get_example(0, echo);
+
+    int const Nx = problem.n(0);
+    int const Ny = problem.n(1); 
+    int const Nz = problem.n(2);
+    Domain domain(Nx, Ny, Nz);
+    int  const NzNyNx = domain.volume();
+    auto const NzNyNx_aligned = (((NzNyNx - 1) >> 2) + 1) << 2; // align to 4 real_t
+    assert(NzNyNx_aligned >= NzNyNx);
+    
+    BKG_stencil<3,19> const stencil;
+    
+    int constexpr Q_aligned = stencil.Q + 1; // Q numbers are always odd on regular lattices, so we get better memory alignment by +1
+
+    // allocate memory
+    size_t const t_mem = (  sizeof(char)  *1 
+                          + sizeof(double)*4
+                          + sizeof(real_t)*2*Q_aligned
+                          + sizeof(double)*int(problem.is_multiphase()) // does not account for phi-halos
+                           ) * NzNyNx; // different than in run
+    printf("LBM  needs %.6f GiByte total for D%dQ%d with (%d x %d x %d) cells.\n", 
+                t_mem/double(1ull << 30), stencil.D, stencil.Q, problem.n(0), problem.n(1), problem.n(2));
+
+    // cell info
+    auto const solid = get_memory<CellInfo>(NzNyNx, 0); // one Byte per cell
+
+    // observables
+    // ToDo: group together into a view2D<double> that can be switched between SoA[4][NzNyNx_aligned] and AoS[NzNyNx][4];
+    auto const rho   = get_memory<double>(NzNyNx_aligned, 0.0);
+    auto const ux    = get_memory<double>(NzNyNx_aligned, 0.0);
+    auto const uy    = get_memory<double>(NzNyNx_aligned, 0.0);
+    auto const uz    = get_memory<double>(NzNyNx_aligned, 0.0);
+    // this array has halo-borders and needs to be indexed using phindex(x,y,z);
+    auto const phi   = problem.is_multiphase() ? get_memory<double>((Nx+2l)*(Ny+2l)*(Nz+2l)) : nullptr; 
+
+    auto const bnd = problem.boundaries();
+    auto const wsp = problem.wall_speed();
+    int    const   boundary[3][2] = { {bnd[0], bnd[1]}, {bnd[2], bnd[3]}, {bnd[4], bnd[5]} };
+    double const wall_speed[3][2] = { {wsp[0], wsp[1]}, {wsp[2], wsp[3]}, {wsp[4], wsp[5]} };
+    double const G = problem.interparticular_interaction_potential();
+
+    lbm_initialize::initialize_boundary(solid, rho, ux, uy, uz, boundary, problem.rho_solid(), Nx, Ny, Nz, wall_speed);
+
+    lbm_initialize::initialize_density(rho, solid, problem.rho_low(), NzNyNx);
+
+    lbm_initialize::initialize_droplets(rho, problem.droplets(), solid, Nx, Ny, Nz, problem.interface_width());
+
+    auto const body_force_xyz = problem.body_force_xyz();
+    
+    view2D<real_t> f0(NzNyNx, Q_aligned); // get memory
+    view2D<real_t> f1(NzNyNx, Q_aligned); // get memory
+    
+    lbm_initialize::initialize_distrFunc(f0, stencil, NzNyNx, solid, rho, ux, uy, uz);
+
+    double const tau = problem.relaxation_time_parameter();
+    
+    double speed_stats[] = {0, 0, 0};
+
+    int const time_total = problem.time_total();
+    int const time_save  = problem.time_save();
+    
+#ifdef TIME_TOTAL
+    #define time_total TIME_TOTAL  // control the maximum number of time steps at compile time using -DTIME_TOTAL
+#endif
+
+#ifdef TIME_SAVE
+    #define time_save  TIME_SAVE   // control the .vti-file output frequency at compile time using -DTIME_SAVE
+#endif
+
+    int constexpr combine = 2; // 2:combine time steps, 1: swap f0 and f1 between timesteps
+    assert(0 == time_save % combine && "cannot combine two time steps");
+
+    int const ranks[] = {0, 0, 0}; // 3D ranks for parallelization
+
+    int const time_monitor = control::get("time_monitor", -1.);
+
+    // main iteration loop
+    for (int t = 0; t <= time_total; t += combine) {
+        if (0 == t % time_save) {
+            // save output to VTK image file
+            auto const speed = lbm_visualize::outputSave(t, rho, ux, uy, uz, phi, ranks, myrank, Nx, Ny, Nz, 
+                                problem.n(0), problem.n(1), problem.n(2), 
+                                problem.save_rho(), problem.save_pre(), problem.save_vel(), G);
+            if (speed > 0) {
+                speed_stats[0] += 1;
+                speed_stats[1] += speed;
+                speed_stats[2] += speed*speed;
+            } // speed
+        } // measure and dump data as .vti files
+
+        if (time_monitor > 0 && 0 == (t % time_monitor)) {
+            // show only the front xy-plane (z=0)
+            std::printf("# time= %i\n", t);
+//             lbm_monitor::show_vector_field(ux, uy, uz, Nx, Ny, Nz, Nz/2);
+            lbm_monitor::show_vector_field(ux, uy, uz, domain, Nz/2);
+//             lbm_monitor::show_scalar(rho, Nx, Ny, Nz, 0);
+//             lbm_monitor::show_scalar(phi, Nx+2, Ny+2, Nz, 1);
+        } // show in terminal
+
+        // calculate the distribution function for the next two time steps
+        if (1 == combine) std::swap(f1, f0);
+        if (problem.is_multiphase()) {
+            if (1 != combine)
+            update<real_t, true >(f1, rho, ux, uy, uz, f0, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, wall_speed[1][1], wall_speed[1][0], phi, G);
+            update<real_t, true >(f0, rho, ux, uy, uz, f1, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, wall_speed[1][1], wall_speed[1][0], phi, G);
+        } else {
+            if (1 != combine)
+            update<real_t, false>(f1, rho, ux, uy, uz, f0, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, wall_speed[1][1], wall_speed[1][0], phi, G);
+            update<real_t, false>(f0, rho, ux, uy, uz, f1, stencil, tau, Nx, Ny, Nz, solid, body_force_xyz, wall_speed[1][1], wall_speed[1][0], phi, G);
+        } // multiphase?
+    } // t
+
+#ifndef SuppressIO
+    lbm_visualize::write_collection_pvd(problem.n(0), problem.n(1), problem.n(2), "openLBMflow", "output", time_total, time_save);
+#endif    
+
+    // compute mean and deviation    
+    auto const denom = ((speed_stats[0] > 0) ? 1/speed_stats[0] : 1.); // inverse denominator
+    speed_stats[1] *= denom;
+    speed_stats[2] *= denom; speed_stats[2] -= speed_stats[1]*speed_stats[1]; speed_stats[2] = std::abs(speed_stats[2]);
+    speed_stats[2] *= ((speed_stats[0] > 1)?speed_stats[0]/(speed_stats[0] - 1.0):1.0); // Gaussian variance
+    printf("LBM  avgSpeed %.3f +/- %.3f MLUP/s\n", speed_stats[1], std::sqrt(speed_stats[2]));
+
+    // free allocated memory
+    free_memory(solid);
+    free_memory(rho);
+    free_memory(uy);
+    free_memory(ux);
+    free_memory(uz);
+    free_memory(phi);
+
+    return speed_stats[1];
+} // run_problem
+
+
+
+
+
+
+
+
 
 int main(int argc, char *argv[]) {
 
@@ -832,6 +897,7 @@ int main(int argc, char *argv[]) {
 
     run<double>(verbosity);
 //     run<float>(verbosity);
+//     run_problem<double>(verbosity);
 
     return stat;
 } // main

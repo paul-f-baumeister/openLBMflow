@@ -6,6 +6,7 @@
 #include <cmath> // std::abs
 
 #include "status.hxx" // status_t, STATUS_TEST_NOT_INCLUDED
+#include "lbm_droplet.hxx" // Droplet
 
 namespace lbm_initialize {
 
@@ -169,6 +170,30 @@ namespace lbm_initialize {
       } // z
 
   } // initialize_droplet
+
+  void initialize_droplets(
+        double     *restrict const rho // in/output density
+      , std::vector<Droplet> const & droplets
+      , CellInfo const cell[]
+      , int const Nx, int const Ny, int const Nz
+      , double const ifaceW
+  ) {
+      double const invers_interface_width = 1./ifaceW;
+      for (int z = 0; z < Nz; ++z) {
+          for (int y = 0; y < Ny; ++y) {
+              for (int x = 0; x < Nx; ++x) {
+                  index_t const xyz = indexyz(x, y, z, Nx, Ny);
+                  if (cell[xyz].is_liquid()) {
+                      for(auto & droplet : droplets) {
+                          auto const tmp_rho = droplet.density(x, y, z, invers_interface_width);
+                          if (tmp_rho > rho[xyz]) rho[xyz] = tmp_rho;
+                      } // droplet
+                  } // is_liquid
+              } // x
+          } // y
+      } // z
+
+  } // initialize_droplets
 
   
   

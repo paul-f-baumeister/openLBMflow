@@ -147,8 +147,6 @@
         return 0;
     } // collide_D3Q19
 
-typedef int status_t;
-
 namespace lbm_collide {
 
 #ifdef  NO_UNIT_TESTS

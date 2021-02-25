@@ -9,3 +9,10 @@ T* get_memory(size_t const n, T const init_value=T(0)) {
     } // i
     return p;
 } // get_memory
+
+template <typename T>
+int free_memory(T* const & p) {
+    if (nullptr == p) return 1;
+    delete[] p;
+    return 0;
+} // free_memory

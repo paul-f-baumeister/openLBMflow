@@ -80,32 +80,63 @@ namespace lbm_monitor {
       uint8_t rgb[4]; // red, green, blue and alpha (opacity) in [0, 255]
   }; // RGBA32
 
+  
+  template <typename real_t>
+  inline void show_scalar_line(int const Nx, real_t const line[], double const a, double const b) {
+      int prev{-1};
+      for(int x = 0; x < Nx; ++x) {
+          auto const igrey = scala(a*line[x] + b);
+          // print "  ", i.e. two blank per cell
+          if (igrey == prev) {
+              // we do not have to change the color
+              std::printf("  ");
+          } else {
+              auto const color = colorchar(igrey, igrey, igrey);
+              std::printf("%s  ", color.c_str());
+              prev = igrey;
+          }
+      } // x
+      std::printf("%s\n", def); // reset and newline
+  } // show_scalar_line
+  
+  
   template <typename real_t>
   status_t show_vector_field(
         real_t const ux[]
       , real_t const uy[]
       , real_t const uz[]
-      , Domain const & domain
+//       , Domain const & domain
+      , int const Nx
+      , int const Ny
+      , int const Nz=1
       , int const z=0
       , double const *const maxval=nullptr
       , double const *const minval=nullptr
+      , real_t const scalar[]=nullptr
   ) {
 
-      int const Nx = domain['x'], Ny = domain['y'], Nz = domain['z'];
+//    int const Nx = domain['x'], Ny = domain['y'], Nz = domain['z'];
       assert(0 <= z); assert(z < Nz);
       // determine minimum and maximum in the data set
       double mini{9e33}, maxi{-9e33}; // init min and max
+      double mins{9e33}, maxs{-9e33}; // init min and max for scalar
       for(int xy = 0; xy < Ny*Nx; ++xy) {
           int const xyz = z*Ny*Nx + xy;
           double const value = pow2(ux[xyz]) + pow2(uy[xyz]) + pow2(uz[xyz]);
           mini = std::min(mini, value);
           maxi = std::max(maxi, value);
+          if (nullptr != scalar) {
+              mins = std::min(mins, double(scalar[xyz]));
+              maxs = std::max(maxs, double(scalar[xyz]));
+          } // scalar
       } // xy
 
       auto const f = 1/std::sqrt(std::max(1e-12, maxi));
       std::printf("# %s values in [%g %g] --> sqrt([%g %g]) on %d x %d\n", 
-                    __func__, mini, maxi, mini*f*f, maxi*f*f,   Ny, Nx);
+                __func__, mini, maxi, mini*pow2(f), maxi*pow2(f), Ny, Nx);
 
+      auto const fs = 1/std::max(1e-12, maxs - mins); // prefactor for scalar
+      
       for(int y = 0; y < Ny; ++y) {
           RGBA32 prev{1 << 24}; // initialize with a value outside of 24bit
           for(int x = 0; x < Nx; ++x) {
@@ -123,9 +154,16 @@ namespace lbm_monitor {
               }
               std::printf("  ");
           } // x
-          std::printf("%s\n", def); // reset and newline 
+          
+          if (nullptr != scalar) {
+              std::printf("%s\t\t", def); // reset and tabs
+              show_scalar_line(Nx, &scalar[(z*Ny + y)*Nx], fs, -mins*fs);
+          } else {
+              std::printf("%s\n", def); // reset and newline
+          } // scalar
       } // y
       std::printf("%s\n", def); // reset and newline 
+      std::fflush(stdout);
       return 0;
   } // show_vector_field
   
@@ -151,30 +189,16 @@ namespace lbm_monitor {
 
       auto const f = 1/std::max(1e-12, maxi - mini);
       std::printf("# %s values in [%g %g] --> [%g %g] on %d x %d\n", 
-                  __func__, mini, maxi, f, (maxi - mini)*f, Ny, Nx);
+                  __func__, mini, maxi, 0.0, (maxi - mini)*f, Ny, Nx);
 
       for(int y = 0; y < Ny; ++y) {
-          int prev{-1};
-          for(int x = 0; x < Nx; ++x) {
-              int const xyz = (z*Ny + y)*Nx + x;
-              float const grey = (rho[xyz] - mini)*f;
-              auto const igrey = scala(grey);
-              // print "  ", i.e. two blank per cell
-              if (igrey == prev) {
-                  // we do not have to change the color
-                  std::printf("  ");
-              } else {
-                  auto const color = colorchar(igrey, igrey, igrey);
-                  std::printf("%s  ", color.c_str());
-                  prev = igrey;
-              }
-          } // x
-          std::printf("%s\n", def); // reset and newline 
+          show_scalar_line(Nx, &rho[(z*Ny + y)*Nx], f, -mini*f);
       } // y
-      std::printf("%s\n", def); // reset and newline 
+      std::printf("%s\n", def); // reset and newline
+      std::fflush(stdout);
       return 0;
   } // show_scalar
-  
+
 
 
 #ifdef  NO_UNIT_TESTS

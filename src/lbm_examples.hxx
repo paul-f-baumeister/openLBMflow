@@ -239,12 +239,14 @@ namespace lbm_examples {
       double rho_low()   const { return rho_low_high_[0]; }
       double rho_high()  const { return rho_low_high_[1]; }
 
-      size_t n_droplets() const { return droplets_.size(); }
-      Droplet const & droplet(int const i) const { assert(0 <= i); assert(i < droplets_.size()); return droplets_[i]; }
+      std::vector<Droplet> const & droplets() const { return droplets_; }
       double const* body_force_xyz() const { return body_force_xyz_; }
       double interparticular_interaction_potential() const { return g_; }
       double interface_width() const { return ifaceW_; }
       double relaxation_time_parameter() const { return tau_; }
+
+      int    const* boundaries() const { return boundaries_[0]; } // return as [6]
+      double const* wall_speed() const { return wall_speed_[0]; } // return as [6]
 
       int  time_total() const { return total_time_steps_; }
       int  time_save()  const { return save_every_time_steps_; }
@@ -263,7 +265,7 @@ namespace lbm_examples {
       double    ifaceW_;
       double    g_;
       double    body_force_xyz_[3];
-      int8_t    boundaries_[3][2]; // 0=periodic, 1=HBB, set half way bounce back
+      int       boundaries_[3][2]; // 0=periodic, 1=HBB, set half way bounce back
       double    wall_speed_[3][2]; // //speed of e.g. the top wall for lid driven cavity
       int       total_time_steps_;
       int       save_every_time_steps_;
@@ -273,7 +275,31 @@ namespace lbm_examples {
 
   }; // class Problem
   #undef WARNING
+
   
+  Problem get_example(int number=0, int const echo=0) {
+
+      #define return_example(EXAMPLE)                  \
+      {   EXAMPLE example;                             \
+          return Problem(example, #EXAMPLE, echo);   } \
+
+      switch (number % 10) {
+        case 0: return_example(default_example);
+        case 1: return_example(multiphase_coalescence);
+        case 2: return_example(multiphase_coalescence_impact);
+        case 3: return_example(multiphase_drop_impact);
+        case 4: return_example(multiphase_drop_on_drop_impact);
+        case 5: return_example(multiphase_rising_bubble);
+        case 6: return_example(singlephase_couette_flow);
+        case 7: return_example(singlephase_lid_driven_cavity);
+        case 8: return_example(singlephase_poiseuille_flow_3D_channel);
+        case 9: return_example(singlephase_poiseuille_flow_plate);
+      }
+      
+      #undef return_example
+      assert(false && "should never end up here");
+  } // get_example
+
 
 #ifdef  NO_UNIT_TESTS
   inline status_t all_tests(int const echo=0) { return STATUS_TEST_NOT_INCLUDED; }

@@ -29,7 +29,25 @@ uint64_t constexpr NonTransposed = 0xfedcba9876543210;
 #define debug_printf(...)
 
 namespace data_view {
-  
+  // This implementation differs from a43/src/data_view.hxx
+  // as it stores the stride instead of the dimensions.
+  // 
+  // It has the following advantages:
+  //    - any transposition without moving of bulk data supported
+  //    - zero strides possible, replace the necessity of functors in many places
+  //          - example: gravity(x,y) can be pointing to a single number
+  //                        double const g_scalar = 9.81;
+  //                        view2D<double const> gravity(&g_scalar, 0, 0); // two zero strides
+  //                     or
+  //                        std::vector<double> gravity_x(nx, 9.81);
+  //                        // modify gravity_x
+  //                        view2D<double const> gravity(gravity_x.data(), 1, 0); // no y-dependence
+  //
+  //      This can reduce the template complexity of a program
+  //      if we do not have to introduce functors for every quantity.
+  //
+  // So far, bounds check can only be controlled at compile time (upper, lower separate)
+
   template <typename int_t>
   inline void check_index(
         int_t const index

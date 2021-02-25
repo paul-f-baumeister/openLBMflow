@@ -39,14 +39,14 @@
           , real_t const y
           , real_t const z
           , double const inverse_interface_width=1 // 1/ifaceW
-      ) {
+      ) const {
           auto const p = position();
           double const dist2 = pow2(x - p[0]) + pow2(y - p[1]) + pow2(z - p[2]);
           auto const dist = std::sqrt(dist2);
           auto const arg = 2*(dist - radius())*inverse_interface_width;
           return 0.5*((rho_high_ + rho_low_) - drop_*(rho_high_ - rho_low_)*std::tanh(arg));
       } // density
-      
+
   private:
       // members
       double rho_low_, rho_high_;

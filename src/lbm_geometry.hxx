@@ -29,7 +29,7 @@ public:
 
   } // [default] constructor
   
-  int32_t periodic(int const d) const { assert(0 <= d); (d < 3); return periodic_[d]; }
+  int32_t periodic(int const d) const { assert(0 <= d); assert(d < 3); return periodic_[d]; }
 
 private:
   // members
