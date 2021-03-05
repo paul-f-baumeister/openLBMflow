@@ -798,7 +798,7 @@ namespace lbm_general {
           f[1] = view4D<real_t>(n[2], n[1], n[0], Q + 3, 0.0);
           int input{0}, output{-1};
 
-          int constexpr Ntime = 103;
+          int constexpr Ntime = 333;
           for(int time = 0; time < Ntime; ++time) {
               output = 1 - input;
               
@@ -870,7 +870,7 @@ namespace lbm_general {
                         , D, Q
                         , M, numax, omega.data()
                         , echo/2
-                        , (time > 99)? vel : nullptr // for CHECK_ME
+                        , (time > 999)? vel : nullptr // for CHECK_ME
                         );
                   propagate_general(f[output], tmp_f, D, Q, ivel, ix, iy, iz, n[0], n[1], n[2], echo);
               } // ix
