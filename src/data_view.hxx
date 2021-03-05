@@ -164,6 +164,7 @@ private:
 
 public:
   
+  // do we want to offer this?
   T const & operator () (int_t const i0) const { return _data[_index(i0)]; }
   T       & operator () (int_t const i0)       { return _data[_index(i0)]; }
   
@@ -178,7 +179,7 @@ public:
 private:
   // private data members
   T * _data;
-  int_t _s0;
+  int_t _s0; // stride
   size_t _mem; // only > 0 if memory owner
 #ifdef  UpperBoundsCheck
   int_t _n0;
@@ -337,7 +338,7 @@ public:
 private:
   // private data members
   T * _data;
-  int_t _s0, _s1;
+  int_t _s0, _s1; // strides
   size_t _mem; // only > 0 if memory owner
 
 }; // view2D
@@ -556,7 +557,7 @@ private:
   
   // private data members
   T * _data;
-  int_t _s0, _s1, _s2;
+  int_t _s0, _s1, _s2; // strides
   size_t _mem; // only > 0 if memory owner
 #ifdef  UpperBoundsCheck
   int_t _n[Rank];
@@ -748,7 +749,7 @@ private:
   
   // private data members
   T * _data;
-  int_t _s0, _s1, _s2, _s3;
+  int_t _s0, _s1, _s2, _s3; // strides
   size_t _mem; // only > 0 if memory owner
 #ifdef  UpperBoundsCheck
   int_t _n[Rank];

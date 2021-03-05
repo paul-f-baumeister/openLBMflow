@@ -8,9 +8,7 @@
 #include "data_view.hxx" // view4D<T>
 #include "status.hxx" // status_t, STATUS_TEST_NOT_INCLUDED
 
-  template <typename real_t> inline
-  real_t pow2(real_t const x) { return x*x; }
-
+#include "lbm_utils.hxx" // pow2
 #include "lbm_monitor.hxx" // ::show_scalar
   
   double factorial(int const n) { return (n < 2) ? (n >= 0) : n*factorial(n - 1); }
@@ -27,13 +25,32 @@
           H[nu] = Hnu; // store
           // use the two step recurrence relation to create the 1D Hermite polynomials
           // H[nu+1] = x * H[nu] - nu * H[nu-1];
-          Hnup1 = x * Hnu - sigma2 * nu * Hnum1; // see snippets/3Hermite.F90 for the derivation of this
+          Hnup1 = x * Hnu - nu * Hnum1 * sigma2;
           // rotate registers for the next iteration
           Hnum1 = Hnu; Hnu = Hnup1; // ordering is important here
       } // nu
   } // Hermite_polynomials
 
-  
+  template <typename real_t>
+  inline void Hermite_polynomials_saving( // 4*numax flop
+        real_t H[]
+      , double const x
+      , int const numax
+      , double const sigma2=1 // sigma^2
+  ) {
+      // same as Hermite_polynomials with some less Flops
+      H[0] = 1;
+      double Hnum1, Hnu{0}, Hnup1{1}; // init for nu=-1
+      for(int nu = 0; nu < numax; ++nu) {
+          // rotate registers
+          Hnum1 = Hnu; Hnu = Hnup1; // ordering is important here
+          // use the two step recurrence relation to create the 1D Hermite polynomials
+          // H[nu+1] = x * H[nu] - nu * H[nu-1];
+          Hnup1 = x * Hnu - nu * Hnum1 * sigma2;
+          H[nu + 1] = Hnup1;
+      } // nu
+  } // Hermite_polynomials_saving
+
   inline int test_Hermite_orthogonality(int const echo=5, int const numax=7) {
       double const dx = 0.25;
       double const sigma = 2;
@@ -143,13 +160,14 @@
         , double const omega[]      // relaxation parameters (omega=1/tau)
 //      , double const body_force_xyz[3]=nullptr
         , int const echo=0          // log-level
+        , double const vel[][4]=nullptr
     ) {
         if (nullptr != f_in) {
             // transform input populations into momenta
             for(int m = 0; m <= M; ++m) moment[m] = 0;
             for(int q = 0; q < Q; ++q) {
                 for(int m = 0; m <= M; ++m) {
-                    moment[m] += f_in[q] * projector[q*(M + 1) + m];
+                    moment[m] += f_in[q] * projector[q*(M + 1) + m]; // 1184 Flop for D2Q37
                 } // m
             } // q
         } // f_in
@@ -165,13 +183,13 @@
         real_t u2{0};
         auto const rho = moment[0];
         if (rho > 0) {
-            auto const inv_rho = 1/rho;
-            auto const kinetic_energy = moment[M]*inv_rho;
-            if (echo > 7) std::printf("# kinetic_energy = %g\n", kinetic_energy);
+            auto const inv_rho = 1/rho; // 1 inversion
+            auto const kinetic_energy = moment[M]*inv_rho; // 1 flop
+            if (echo > 7) std::printf("# kinetic_energy = %g\n", kinetic_energy/D);
             real_t u[3];
             for(int d = 0; d < D; ++d) {
-                u[d] = moment[1 + d]*inv_rho; // velocity
-                u2 += pow2(u[d]);
+                u[d] = moment[1 + d]*inv_rho; // velocity, D flop
+                u2 += pow2(u[d]); // 2*D flop
             } // d
             
 
@@ -183,9 +201,10 @@
     //         } // body_force?
 
             // the temperature T is defined as 1/D*( <v^2> - <v>^2 ), the variance of the distribution
-            auto const temperature = kinetic_energy - u2/D;
+            auto const temperature = kinetic_energy - u2*(1./D); // 2 flop
             if (echo > 7) std::printf("# temperature = %g\n", temperature);
 
+            
 
             // prepare equilibrium Hermite polynomials
             real_t Hermite_eq[3][8];
@@ -193,6 +212,11 @@
             for(int d = 0; d < D; ++d) {
                 Hermite_polynomials(Hermite_eq[d], u[d], 7, 1 - temperature);
             } // d
+
+#define CHECK_ME
+#ifdef  CHECK_ME
+            double meq_ref[35];
+#endif // CHECK_ME
 
             { // scope: relax towards equilibrium momenta
                 int m{0};
@@ -206,6 +230,9 @@
                             auto const equilibrium_moment = rho*Hermite_eq[0][nx]
                                                                *Hermite_eq[1][ny]
                                                                *Hermite_eq[2][nz];
+#ifdef  CHECK_ME
+                            meq_ref[m] = equilibrium_moment; // store
+#endif // CHECK_ME
                             auto const old_moment = moment[m];
                             moment[m] = one_minus_omega_nu*old_moment + omega_nu*equilibrium_moment;
                             if (echo > 9) {
@@ -220,6 +247,54 @@
                 assert(M == m);
             } // scope
             
+#ifdef  CHECK_ME
+            if (D == 2 && Q == 37) {
+                // compute the equilibrium populations the classical way
+                // according to https://www.imacm.uni-wuppertal.de/fileadmin/imacm/preprints/2020/imacm_20_60.pdf
+                if (nullptr != vel) {
+                    double const Tm1 = temperature - 1;
+//                  double const inv_cs2 = 1;
+                    double const inv_cs2 = pow2(1.19697977039307435897239);
+                    double const u4 = pow2(u2);
+                    double feq[37];
+                    for(int q = 0; q < Q; ++q) {
+                        double const uc = u[0]*vel[q][0]  + u[1]*vel[q][1];
+                        double const c2 = pow2(vel[q][0]) + pow2(vel[q][1]);
+                        double const uc2 = pow2(uc);
+                        
+                        double const f0 = 1; // zeroth order
+                        double const f1 = uc; // first order
+                        double const f2 = inv_cs2/2.*( uc2 - u2 + Tm1*(c2 - D) ); // seconds order
+                        double const f3 = pow2(inv_cs2)/6.*uc*( uc2 - 3*u2 + 3*Tm1*(c2 - D - 2) ); // third order
+                        double const f4 = pow3(inv_cs2)/24.*( pow2(uc2) - 6*uc2*u2 + 3*u4
+                                                            + 6*Tm1*( uc2*(c2 - D - 2) + u2*(2 + D - c2) )
+                                                            + 3*pow2(Tm1)*( pow2(c2) - 2*(D + 2)*c2 + D*(D + 2) )
+                                                            ); // fourth order
+                        double const wq = expansion[q]; // pure weights
+                        feq[q] = wq*rho*(f0 + f1 + f2 + f3 + f4);
+                    } // q
+
+                    // project them
+                    double meq[15]; assert(15 == M);
+                    if (echo > 1) std::printf("\n# compare %d moments: Gabbana vs. here\n", M);
+                    for(int m = 0; m < M; ++m) {
+                        meq[m] = 0;
+                        for(int q = 0; q < Q; ++q) {
+                            meq[m] += feq[q] * projector[q*(M + 1) + m];
+                        } // q
+                        if (echo > 1) {
+                            double const dif = meq[m] - meq_ref[m];
+                            double const rel = (std::abs(meq_ref[m]) > 1e-16) ? dif/meq_ref[m] : 0;
+                            std::printf("# %dth moment: Gabbana %g here %g diff %g relative %g\n", 
+                                        m, meq[m], meq_ref[m], dif, rel);
+                        } // echo
+                    } // m
+                } // nullptr != vel
+            } // D2Q37
+#endif // CHECK_ME
+            
+            
+            
         } else {
             for(int m = 0; m <= M; ++m) {
                 moment[m] = 0; // clear all moments
@@ -231,7 +306,7 @@
             for(int q = 0; q < Q; ++q) f_out[q] = 0; // init results
             for(int m = 0; m < M; ++m) {
                 for(int q = 0; q < Q; ++q) {
-                    f_out[q] += moment[m] * expansion[m*Q + q];
+                    f_out[q] += moment[m] * expansion[m*Q + q]; // 1110 Flop for D2Q37
                 } // q
             } // m
         } // f_out
@@ -240,7 +315,7 @@
     } // collide_general
 
     template <typename real_t>
-    inline double propagate_general(
+    inline void propagate_general(
           view4D<real_t>       & f_out    // result populations[z][y][x][Q]
         , real_t const *restrict const f_in // input         populations[Q]
         , int const D               // dimensions
@@ -262,7 +337,47 @@
         } // q
     } // propagate_general
 
+    
+    template <typename real_t> 
+    void initalize_Taylor_Green_2D(
+          view4D<real_t> & moments
+        , int const n[3]
+        , int const iz=0
+        , double const rho=1
+    ) {
+        double const pi = std::acos(-1.);
+        double const TG2D[2][2] = {{1, -1}, {2*pi/n[0], 2*pi/n[1]}}; // Taylor-Green vortex flow
+        assert( std::abs(TG2D[0][0]*TG2D[1][0] + TG2D[0][1]*TG2D[1][1]) < 1e-9 );
+        for (int iy = 0; iy < n[1]; ++iy) {
+            double const cos_y = std::cos(TG2D[1][1]*iy);
+            double const sin_y = std::sin(TG2D[1][1]*iy);
+            for (int ix = 0; ix < n[0]; ++ix) {
+                moments(iz,iy,ix,0) = rho;
+                moments(iz,iy,ix,1) = TG2D[0][0] * std::sin(TG2D[1][0]*ix) * cos_y;
+                moments(iz,iy,ix,2) = TG2D[0][1] * std::cos(TG2D[1][0]*ix) * sin_y;
+            } // ix
+        } // iy
+    } // initalize_Taylor_Green_2D
 
+    
+    template <typename real_t> 
+    void initalize_droplet(
+          view4D<real_t> & moments
+        , int const n[3]
+        , double const xyzr[4]
+        , double const rho=1
+    ) {
+        auto const radius2 = pow2(xyzr[3]);
+        for         (int iz = 0; iz < n[2]; ++iz) {   auto const z2 = pow2(iz - xyzr[2]);
+            for     (int iy = 0; iy < n[1]; ++iy) {   auto const y2 = pow2(iy - xyzr[1]);
+                for (int ix = 0; ix < n[0]; ++ix) {   auto const x2 = pow2(ix - xyzr[0]);
+                    auto const dist2 = x2 + y2 + z2;
+                    moments(iz,iy,ix,0) += (dist2 < radius2)*rho;
+                } // ix
+            }     // iy
+        }         // iz
+    } // initalize_droplet
+    
 namespace lbm_general {
 
 #ifdef  NO_UNIT_TESTS
@@ -380,7 +495,6 @@ namespace lbm_general {
       int const M = number_of_moments(numax, D, Q, echo);
       
       
-      
       uint32_t binom_coeff[8][8];
       { // scope: setup the binomial coefficients
           for(int k = 0; k < 8; ++k) binom_coeff[0][k] = 0;
@@ -400,10 +514,10 @@ namespace lbm_general {
       std::vector<double> omega(1 + numax, 0.0); // omega = 1/tau (how much of the equilibrium_moment is added?)
 //       omega[0] = 0.0; // conserve mass
 //       omega[1] = 0.0; // conserve linear momentum
+
       omega[2] = 0.125; // relax the higher moments
       omega[3] = 0.25; // relax order 3 momenta
-      omega[4] = 0.5; // relax order 3 momenta
-      omega[5] = 1.0; // fully truncate order 5 momenta
+      omega[4] = 0.5; // fully relax order 4 momenta
 
       std::vector<double> projector(Q*(M + 1), 0.0);
       std::vector<double> expansion(M*Q      , 0.0);
@@ -411,7 +525,7 @@ namespace lbm_general {
 
             double H[3][8]; H[Z][0] = 1;
             for(int d = 0; d < D; ++d) {
-                Hermite_polynomials(H[d], vel[q][d], numax);
+                Hermite_polynomials(H[d], vel[q][d], numax); // if we need to expand into a rotated velocity set, apply a rotation to vel[q] first
             } // d
 
             auto const d2 = iv2[q]; // integer distance^2
@@ -424,8 +538,9 @@ namespace lbm_general {
                         double const Hxyz = H[X][nx]*H[Y][ny]*H[Z][nz];
                         // if (0 == q) std::printf("# D%d m=%i nu=%d xyz= %i %i %i\n", D, m, nu, nx, ny, nz);
                         assert(m < M);
+                        double const geometry_factors = binom_coeff[nu][k]/factorial(nu);
                         projector[q*(M + 1) + m] = Hxyz;
-                        expansion[m*Q + q]  = w[d2]*Hxyz*binom_coeff[nu][k]/factorial(nu);
+                        expansion[m*Q + q] = w[d2]*Hxyz*geometry_factors;
                         ++m;
                         ++k;
                     } // nx
@@ -434,13 +549,155 @@ namespace lbm_general {
             assert(M == m);
 
             // to compute the kinetic energy:
-            projector[q*(M + 1) + M] = 0.5*vel[q][v2];
+            projector[q*(M + 1) + M] = vel[q][v2]/D;
 
       } // q
  
+ 
+      // Factorization:
+      //      projector and expansion matrix can be factorized. For eaxmple D2Q37
+      //      the projection operations take 37*2*15 = 1110 Flop if performed 
+      //      as matrix multiplication like implemented here.
+      //      The projector matrix has 15*37 = 555 elements, the populations have 37 and the moments 15 elements
+      //      Using factorization, we have a 2 step procedure:
+      //        Step 1) transforming from 37 populations in 37*2*5 = 370 Flop to 7*5 f_nx(y) 
+      //        Step 2) transforming from 35 intermediates in 7*2*15 = 210 Flop to 15 moments
+      //        ... so we would save about half of the Flops
+      //      The factorized matrices have 2*7*5 = 70 elements or could even be computed on-the-fly
       
+      // for the reconstruction/expansion, we have to weight 
+      //      the 15 moments with geometry_factors[m] and 
+      //      the 37 populations with population_weights[q]
+      //      so an additional 15+37=52 numbers are needed.
+      //      
+      //      Geometry factors are
+      //              1
+      //            1   1
+      //          1/2   2/2   1/2
+      //        1/6   3/6   3/6   1/6
+      //      1/24   4/24   6/24   4/24   1/24
+      //      could be scaled up by a common denominator 24:
+      //              24
+      //            24  24
+      //          12  24  12
+      //        4   12  12  4
+      //      1   4   6   4   1
+      //      so they fit into 15 int8_t
+      //      and the factor 1/24 is merged into the population weights
+      //      
+      //      population_weights can be compressed to 8 doubles using an indirection
+      //      indirection indices could be compressed into 37*3 bit < 16 Byte
+      //      or 37*4 bit < 19 Byte
       
+      //      if we do not use omega_nu for nu == 0 and nu == 1
+      //      but branch for that case, we do not need to store the (trivial) geometry_factors (3x 24)
+      //      then, 19 Byte and 12 Byte fit into one cache line
       
+      //      for the projection and expansion with Hermite polynomials, we also need the 3bit info, about the y-velocity
+      //        
+      //      double tmp[5][8];
+      //      {
+      //          for (int q = 0; q < 37; ++q) {
+      //              int const cy =  xy[q]       & 0x7;
+      //              int const cx = (xy[q] >> 4) & 0x7;
+      //              for (int nx = 0; nx <= 4; ++nx) {
+      //                  tmp[nx][cy] += f_in[q] * H[cx][nx]; // 37*5*2 = 370 Flop
+      //              } // nx
+      //          } // q
+      //      }
+      //      double moment[15];
+      //      {
+      //          int m{0};
+      //          for (int nu = 0; nu <= 4; ++nu) {
+      //              for (int ny = 0; ny < nu; ++ny) {
+      //                  int const nx = nu - ny;
+      //                  double mom{0}
+      //                  for (int cy = 0; cy < 7; ++cy) {
+      //                      mom += tmp[nx][cy] * H[cy][ny]; // 15*7*2 = 210 Flop
+      //                  } // cy
+      //                  moment[m] = mom;
+      //                  ++m;
+      //              } // ny
+      //          } // nu
+      //          assert(15 == m);
+      //      }
+      //      //
+      //      // 1 inversion + 7 Flop
+      //      // 
+      //      // How to compute the kinetic energy? (moment[3] + moment[5] + 2*moment[0])/(rho*D);
+      //      // // moment[3], moment[5] are cx^2 - 1 and cy^2 - 1
+      //      //
+//             double Hermite_eq[2][5];
+//             double const mTm1 = 1 - temperature; // 1 Flop
+//             Hermite_polynomials_saving(Hermite_eq[0], u[0], 4, mTm1); // 16 Flop
+//             Hermite_polynomials_saving(Hermite_eq[1], u[1], 4, mTm1); // 16 Flop
+//             { // scope: relax towards equilibrium momenta
+//                 int m{0};
+//                 for(int nu = 0; nu <= numax; ++nu) { // order
+//                     auto const omega_nu = (nu > 1) ? omega[nu] : 0;
+//                     auto const one_minus_omega_nu = 1 - omega_nu; // 5 Flop
+//                     for(int ny = 0; ny <= nu - nz; ++ny) {
+//                         int const nx = nu - ny - nz;
+//                         auto const equilibrium_moment = rho*Hermite_eq[0][nx]
+//                                                            *Hermite_eq[1][ny]; // 15*2 Flop
+//                         auto const old_moment = moment[m];
+//                         moment[m] = one_minus_omega_nu*old_moment + omega_nu*equilibrium_moment; // 15*3 Flop
+//                         ++m;
+//                     } // ny
+//                 } // nu
+//                 assert(M == m);
+//             } // scope
+      //
+      //      // and expansion (double loops nu,ny can be fused)
+      //      {
+      //          int m{0};
+      //          for (int nu = 0; nu <= 4; ++nu) {
+      //              for (int ny = 0; ny < nu; ++ny) {
+      //                  int const nx = nu - ny;
+      //                  moment[m] *= geometry_factors[m]; // 15 Flop
+      //                  for (int cy = 0; cy < 7; ++cy) {
+      //                      tmp[nx][cy] += H[cy][ny] * moment[m]; // 15*7*2 = 210 Flop
+      //                  } // cy
+      //                  ++m;
+      //              } // ny
+      //          } // nu
+      //          assert(15 == m);
+      //      }
+      //      {
+      //          for (int q = 0; q < 37; ++q) {
+      //              int const cy =  xy[q]       & 0x7;
+      //              int const cx = (xy[q] >> 4) & 0x7;
+      //              double f{0};
+      //              for (int nx = 0; nx <= 4; ++nx) {
+      //                  f += H[cx][nx] * tmp[nx][cy]; // 37*5*2 = 370 Flop
+      //              } // nx
+      //              double const w = weights_d2[cx*cx + cy*cy];
+      //              f_out[q] = w*f; // 37 Flop
+      //          } // q
+      //      }
+      //      
+      
+      // Flop count D2Q37 is 370 + 210 + 7 + 4 + 1 + 16 + 16 + 5 + 30 + 45 + 15 + 210 + 370 + 37 = 1336 Flop
+      // plus 1 inversion
+      // most but not all flops are FMA
+      // Arithmetic intensity:
+      //    How much loads and stores? (only those quantities that are site-intensive)
+      //    37*2*8 Byte = 592 Byte
+      //    AI = 2.25 Flop/Byte
+      //    A100: 9.5 TFlop/s over 1 TByte/s --> memory bound
+      //  ==> complexity of the custom version for D2Q37 with Hermite polynomials is not necessary
+      //      yes, we do save some bandwidth since H is much smaller than projector and expansion matrix
+      //      but that is not so much if we use long vectors (e.g. 64 CUDA threads per block)
+      //      since the matrices will be cached
+
+      // Flop count D2Q37 with matrices 1184 + 7 + 4 + 1 + 16 + 16 + 5 + 30 + 45 + 1110 = 2418 Flop
+      //  37*2*8 + 37*(16+15)*8/vector = 735.375 for vector=64
+      //  ==> AI = 3.288
+      //  if we consider the matrices to be cached
+      //  --> AI = 4.08
+      //  otherwise, we could consider to constuct the matrices 
+      //      on-the-fly from ivelocity[][2],weight_d2[],geometry_factors[],r=1.19697977
+
       if (1) {
           auto const dev = check_overlap(projector.data(), expansion.data(), Q, M, echo/2);
           if (echo > 1) std::printf("# %s: projector*expansion deviates max %.1e from unity\n", __func__, dev);
@@ -481,6 +738,7 @@ namespace lbm_general {
                     , numax
                     , omega.data()
                     , echo
+                    , vel // for CHECK_ME
                     );
 
               if (0 == time) {
@@ -516,37 +774,36 @@ namespace lbm_general {
       
       
       if (1) {
-          int const n[3] = {2*128, 2*128, 1};
+          int const n1 = 1 << 8;
+          int const n[3] = {n1, n1, 1};
           view4D<real_t> moments(n[2], n[1], n[0], M + 1, 0.0);
 
-          double const pi = std::acos(-1.);
           // initalize moments
-          double const TG2D[2][2] = {{1, -1}, {2*pi/n[0], 2*pi/n[1]}}; // Taylor-Green vortex flow
-          assert( std::abs(TG2D[0][0]*TG2D[1][0] + TG2D[0][1]*TG2D[1][1]) < 1e-9 );
-          for (int iz = 0; iz < n[2]; ++iz) {
-          for (int iy = 0; iy < n[1]; ++iy) {
-          for (int ix = 0; ix < n[0]; ++ix) {
-              double const rho = 1.0; // density
-//            moments(iz,iy,ix,0) = rho * (1 + pow2(std::sin((ix + 0.5*iy)*2*pi/(n[0] + 0.5*n[1])))); // density
-              moments(iz,iy,ix,0) = rho;
-//               for(int d = 0; d < D; ++d) {
-//                   moments(iz,iy,ix,1 + d) = rho*(0.01*(1 + d)); // linear momentum
-//               } // d
-              moments(iz,iy,ix,1) = TG2D[0][0] * std::sin(TG2D[1][0]*ix) * std::cos(TG2D[1][1]*iy);
-              moments(iz,iy,ix,2) = TG2D[0][1] * std::cos(TG2D[1][0]*ix) * std::sin(TG2D[1][1]*iy);
-              moments(iz,iy,ix,M) = rho; // kinetic energy
-          }}} // ix iy iz
+
+          if (0) {
+              double const droplet0_position_and_radius[] = {n[0]*.5 + n[0]*.125, n[1]*.5, 0, n[0]*.125};
+              double const droplet1_position_and_radius[] = {n[0]*.5 - n[0]*.125, n[1]*.5, 0, n[0]*.125};
+              initalize_droplet(moments, n, droplet0_position_and_radius);
+              initalize_droplet(moments, n, droplet1_position_and_radius);
+          } else {
+              initalize_Taylor_Green_2D(moments, n); assert(1 == n[2]);
+          }
+
+          for (int xyz = 0; xyz < n[2]*n[1]*n[0]; ++xyz) {
+              moments(0,0,xyz,M) = moments(0,0,xyz,0); // kinetic energy = rho
+          } // xyz
 
           view4D<real_t> f[2]; // population arrays
           f[0] = view4D<real_t>(n[2], n[1], n[0], Q + 3, 0.0);
           f[1] = view4D<real_t>(n[2], n[1], n[0], Q + 3, 0.0);
           int input{0}, output{-1};
 
-          int constexpr Ntime=3333;
+          int constexpr Ntime = 103;
           for(int time = 0; time < Ntime; ++time) {
               output = 1 - input;
               
-              if (0 == (time & 0x0)) {
+              if (0 == (time & 0x0)) { // monitor
+
                   view3D<float> rho_u(4, n[0], n[1], 0.f); // {rho,ux,uy,uz}[Ny][Nx]
                   int const iz = 0;
                   for (int iy = 0; iy < n[1]; ++iy) {
@@ -563,10 +820,8 @@ namespace lbm_general {
                   } // iy
 //                   std::printf("\n# time step %i density\n", time);
 //                   lbm_monitor::show_scalar(rho_u.data(), n[0], n[1]); // density
-//                   std::printf("\n# time step %i velocity field and density\n", time);
-//                   lbm_monitor::show_vector_field(rho_u[1].data(), rho_u[2].data(), rho_u[3].data(), 
-//                                n[0], n[1], 1, 0, nullptr, nullptr, rho_u.data());
 
+                  
                   if (1) {
                       view3D<float> vorticity(n[2], n[1], n[0], 0.f);
                       for (int iy = 0; iy < n[1]; ++iy) {
@@ -585,9 +840,18 @@ namespace lbm_general {
                       } // iy
 //                       std::printf("\n# time step %i vorticity\n", time);
 //                       lbm_monitor::show_scalar(vorticity.data(), n[0], n[1]);
+
                       std::printf("\n# time step %i velocity field and vorticity\n", time);
-                      lbm_monitor::show_vector_field(rho_u[1].data(), rho_u[2].data(), rho_u[3].data(),
+                      lbm_monitor::show_vector_field(
+                                            rho_u[1].data(), rho_u[2].data(), rho_u[3].data(),
                                             n[0], n[1], 1, 0, nullptr, nullptr, vorticity.data());
+                  } else { 
+
+                      std::printf("\n# time step %i velocity field and density\n", time);
+                      double const mass = lbm_monitor::show_vector_field(
+                                            rho_u[1].data(), rho_u[2].data(), rho_u[3].data(), 
+                                            n[0], n[1], 1, 0, nullptr, nullptr, rho_u.data());
+                      std::printf("# mass at time step %i is %.15g\n\n", time, mass);
                   } // compute vorticity?
 
               } // monitor
@@ -606,6 +870,7 @@ namespace lbm_general {
                         , D, Q
                         , M, numax, omega.data()
                         , echo/2
+                        , (time > 99)? vel : nullptr // for CHECK_ME
                         );
                   propagate_general(f[output], tmp_f, D, Q, ivel, ix, iy, iz, n[0], n[1], n[2], echo);
               } // ix
@@ -632,11 +897,23 @@ namespace lbm_general {
       return 0;
   } // test_stencils
 
+  inline status_t test_Hermite_version(int const echo=0) {
+      int constexpr numax = 15;
+      double H[1 + numax], Hs[1 + numax], x=.6;
+      Hermite_polynomials(H, x, numax);
+      Hermite_polynomials_saving(Hs, x, numax);
+      double dev{0};
+      for(int nu = 0; nu <= numax; ++nu) {
+          dev = std::max(dev, std::abs(H[nu] - Hs[nu]));
+      } // nu
+      return (dev > 1e-12);
+  } // test_Hermite_version
+  
   inline status_t all_tests(int const echo=0) {
       status_t stat(0);
+      stat += test_Hermite_version(echo);
       stat += test_Hermite_orthogonality(echo);
       stat += test_stencils<double>(echo);
-//    stat += test_fcc(echo);
       return stat;
   } // all_tests
 

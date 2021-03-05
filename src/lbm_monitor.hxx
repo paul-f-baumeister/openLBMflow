@@ -8,7 +8,9 @@
 
 #include "status.hxx" // status_t
 
+#include "lbm_utils.hxx" // pow2
 #include "lbm_domain.hxx" // Domain
+
 
 namespace lbm_monitor {
 
@@ -71,9 +73,10 @@ namespace lbm_monitor {
 
   inline string15_t colorchar(uint8_t const rgb[3]) { return colorchar(rgb[0], rgb[1], rgb[2]); }
   
-//   inline double ssqrt(double const x) { return x; }
+  inline double ssqrt(double const x) { return x; }
   // signed squareroot
-  inline double ssqrt(double const x) { return ((x < 0) ? -1: 1)*std::sqrt(std::abs(x)); }
+//   inline double ssqrt(double const x) { return ((x < 0) ? -1: 1)*std::sqrt(std::abs(x)); }
+//   inline double ssqrt(double const x) { return ((x < 0) ? -1: 1)*std::sqrt(std::sqrt(std::abs(x))); }
 
   union RGBA32 {
       int32_t i32; // makes it possible to easily compare if twpo colors are the same
@@ -101,7 +104,7 @@ namespace lbm_monitor {
   
   
   template <typename real_t>
-  status_t show_vector_field(
+  double show_vector_field(
         real_t const ux[]
       , real_t const uy[]
       , real_t const uz[]
@@ -120,22 +123,27 @@ namespace lbm_monitor {
       // determine minimum and maximum in the data set
       double mini{9e33}, maxi{-9e33}; // init min and max
       double mins{9e33}, maxs{-9e33}; // init min and max for scalar
+      double mass{0};
       for(int xy = 0; xy < Ny*Nx; ++xy) {
           int const xyz = z*Ny*Nx + xy;
           double const value = pow2(ux[xyz]) + pow2(uy[xyz]) + pow2(uz[xyz]);
           mini = std::min(mini, value);
           maxi = std::max(maxi, value);
           if (nullptr != scalar) {
-              mins = std::min(mins, double(scalar[xyz]));
-              maxs = std::max(maxs, double(scalar[xyz]));
+              double const scalar_value = scalar[xyz];
+              mins = std::min(mins, scalar_value);
+              maxs = std::max(maxs, scalar_value);
+              mass += scalar_value;
           } // scalar
       } // xy
-
+      
       auto const f = 1/std::sqrt(std::max(1e-12, maxi));
-      std::printf("# %s values in [%g %g] --> sqrt([%g %g]) on %d x %d\n", 
-                __func__, mini, maxi, mini*pow2(f), maxi*pow2(f), Ny, Nx);
-
       auto const fs = 1/std::max(1e-12, maxs - mins); // prefactor for scalar
+      std::printf("# %s values in [%g %g] --> sqrt([%g %g])", 
+                     __func__, mini, maxi, mini*pow2(f), maxi*pow2(f));
+      if (nullptr != scalar) std::printf(", scalar values in [%g %g] --> [%g %g]", 
+                                                mins, maxs, 0.0, (maxs - mins)*fs);
+      std::printf(" on %d x %d\n", Ny, Nx);
       
       for(int y = 0; y < Ny; ++y) {
           RGBA32 prev{1 << 24}; // initialize with a value outside of 24bit
@@ -164,9 +172,9 @@ namespace lbm_monitor {
       } // y
       std::printf("%s\n", def); // reset and newline 
       std::fflush(stdout);
-      return 0;
+      return mass;
   } // show_vector_field
-  
+
   template <typename real_t>
   status_t show_scalar(
         real_t const rho[]
@@ -212,7 +220,7 @@ namespace lbm_monitor {
           for (int ig = 5; ig >= 0; --ig) {
               for (int ir = 5; ir >= 0; --ir) {
                   // print a single ' ' with the color formatter in front
-                  std::printf("%s ", colorchar(ir/5., ig/5., ib/5.).c_str());
+                  std::printf("%s ", colorchar(ir, ig, ib).c_str());
               } // ir
           } // ig
           std::printf("%s\n", def); // reset and newline 
