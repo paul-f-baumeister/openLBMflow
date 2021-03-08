@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdio> // printf, std::fflush, stdout
+#include <cstdio> // std::printf, std::fflush, stdout
 #include <cassert> // assert
 #include <cstdint> // uint_t --> replace size_t with this?
 #include <algorithm> // std::fill
@@ -10,7 +10,7 @@ typedef int status_t;
 
 uint64_t constexpr NonTransposed = 0xfedcba9876543210;
 
-// #define UpperBoundsCheck
+#define UpperBoundsCheck
 #ifdef  UpperBoundsCheck
   int64_t constexpr RangeUnknown = -1;
   #define UpperBound(UB) (UB)
@@ -24,9 +24,6 @@ uint64_t constexpr NonTransposed = 0xfedcba9876543210;
   bool constexpr LowerBoundCheck = false;
 #endif
 
-// for view1D
-// #define debug_printf(...) printf(__VA_ARGS__)
-#define debug_printf(...)
 
 namespace data_view {
   // This implementation differs from a43/src/data_view.hxx
@@ -74,7 +71,49 @@ namespace data_view {
       #endif // UpperBoundsCheck
   } // check_index
 
+  template <typename int_t>
+  void subview_from_string(
+        int_t sp[]
+      , int_t ip[]
+      , char const *const slice
+      , int const nRank
+      , int const nColon
+      , int_t const strides[]
+      , int_t const indices[]
+  ) {
+      assert(nullptr != slice);
+      assert(nColon < nRank);
+      int colon{nColon}, index{nRank - nColon};
+      printf("# sub view%dD", nColon);
+      for (int c = 0; c < nRank; ++c) {
+          char const s = slice[c];
+          assert('\0' != s && "slicing string too short");
+          int const r = nRank - 1 - c;
+          if (':' == s) {
+              --colon;
+              assert(colon >= 0 && "slicing string has too many colons");
+              sp[colon] = strides[r];
+              ip[r] = 0;
+              printf("%c%c", c?',':'(', s);
+          } else {
+              --index;
+              assert(index >= 0 && "slicing string has not enough colons");
+              ip[r] = indices[index];
+              printf("%c%i", c?',':'(', ip[r]);
+          }
+      } // r
+      printf(")\n");
+      assert(0 == colon);
+      assert(0 == index);
+      assert('\0' == slice[nRank] || ' ' == slice[nRank]); // string stops or a space separator (consistency)
+  } // subview_from_string
+  
 } // namespace data_view  
+  
+
+// for view1D
+// #define debug_printf(...) std::printf(__VA_ARGS__)
+#define debug_printf(...)
   
 template <typename T, typename int_t=int32_t>
 class view1D {
@@ -168,7 +207,7 @@ public:
   T const & operator () (int_t const i0) const { return _data[_index(i0)]; }
   T       & operator () (int_t const i0)       { return _data[_index(i0)]; }
   
-  // no slicing, [] also mean data access (like vectors)
+  // no slicing, [] also means data access (like vectors)
   T const & operator [] (int_t const i0) const { return _data[_index(i0)]; }
   T       & operator [] (int_t const i0)       { return _data[_index(i0)]; }
 
@@ -202,7 +241,7 @@ private:
 
 
 // for view2D
-// #define debug_printf(...) printf(__VA_ARGS__)
+// #define debug_printf(...) std::printf(__VA_ARGS__)
 #define debug_printf(...)
 
 template <typename T, typename int_t=int32_t>
@@ -304,6 +343,9 @@ public:
   view1D<T const,int_t> operator [] (int_t const i1) const { return view1D<T const,int_t>(_data + _index(i1,0), _s0); }
   view1D<T      ,int_t> operator [] (int_t const i1)       { return view1D<T      ,int_t>(_data + _index(i1,0), _s0); }
 
+  
+  
+  
   T*      data()   const { return _data; }
 
   // for backwards compatability with older versions
@@ -391,8 +433,8 @@ private:
 
 
 // for view3D
-#define debug_printf(...) printf(__VA_ARGS__)
-// #define debug_printf(...)
+// #define debug_printf(...) std::printf(__VA_ARGS__)
+#define debug_printf(...)
 
 template <typename T, typename int_t=int32_t>
 class view3D {
@@ -576,8 +618,8 @@ private:
 
 
 // for view4D
-#define debug_printf(...) printf(__VA_ARGS__)
-// #define debug_printf(...)
+// #define debug_printf(...) std::printf(__VA_ARGS__)
+#define debug_printf(...)
 
 template <typename T, typename int_t=int32_t>
 class view4D {
@@ -688,6 +730,75 @@ public:
   view3D<T      ,int_t> operator [] (int_t const i3)       {
             return view3D<T      ,int_t>(_data + _index(i3,0,0,0), _s2, _s1, _s0); }
 
+           
+  // more advanced slicing: fix 3 of 4 indices
+  view1D<T const, int_t> operator () (int_t const i2, int_t const i1, int_t const i0, char const *const slice="___:") 
+      const
+  {
+      int constexpr nColon = 1;
+      int_t const strides[Rank] = {_s0, _s1, _s2, _s3};
+      int_t const indices[Rank - nColon] = {i0, i1, i2};
+      int_t sp[nColon];
+      int_t ip[Rank];
+#if 0
+      assert(nullptr != slice);
+      int colon{nColon}, index{Rank - nColon};
+      printf("# sub view%dD", nColon);
+      for (int c = 0; c < Rank; ++c) {
+          char const s = slice[c];
+          assert('\0' != s && "slicing string too short");
+          int const r = Rank - 1 - c;
+          if (':' == s) {
+              --colon;
+              assert(colon >= 0 && "slicing string has too many colons");
+              sp[colon] = strides[r];
+              ip[r] = 0;
+              printf("%c%c", c?',':'(', s);
+          } else {
+              --index;
+              assert(index >= 0 && "slicing string has not enough colons");
+              ip[r] = indices[index];
+              printf("%c%i", c?',':'(', ip[r]);
+          }
+      } // r
+      printf(")\n");
+      assert(0 == colon);
+      assert(0 == index);
+      assert('\0' == slice[Rank] || ' ' == slice[Rank]); // string stops or a space separator (consistency)
+#else
+      data_view::subview_from_string(sp, ip, slice, Rank, nColon, strides, indices);
+#endif
+      return view1D<T const, int_t>(_data + _index(ip[3],ip[2],ip[1],ip[0]), sp[0]);
+  } // advanced slicing 4 --> 1
+
+
+  // more advanced slicing: fix 2 of 4 indices
+  view2D<T const, int_t> operator () (int_t const i1, int_t const i0, char const *const slice="__::") 
+      const
+  {
+      int constexpr nColon = 2;
+      int_t const strides[Rank] = {_s0, _s1, _s2, _s3};
+      int_t const indices[Rank - nColon] = {i0, i1};
+      int_t sp[nColon];
+      int_t ip[Rank];
+      data_view::subview_from_string(sp, ip, slice, Rank, nColon, strides, indices);
+      return view2D<T const, int_t>(_data + _index(ip[3],ip[2],ip[1],ip[0]), sp[1], sp[0]);
+  } // advanced slicing 4 --> 2
+
+  // more advanced slicing: fix 1 of 4 indices
+  view3D<T const, int_t> operator () (int_t const i0, char const *const slice="_:::") 
+      const
+  {
+      int constexpr nColon = 3;
+      int_t const strides[Rank] = {_s0, _s1, _s2, _s3};
+      int_t const indices[Rank - nColon] = {i0};
+      int_t sp[nColon];
+      int_t ip[Rank];
+      data_view::subview_from_string(sp, ip, slice, Rank, nColon, strides, indices);
+      return view3D<T const, int_t>(_data + _index(ip[3],ip[2],ip[1],ip[0]), sp[2], sp[1], sp[0]);
+  } // advanced slicing 4 --> 3
+
+  
   T* data() const { return _data; }
   
   // for backwards compatability with older versions
@@ -784,15 +895,15 @@ namespace data_view {
       // this test is to see if everything compiles
       status_t stat(0);
       int const n0 = 5;
-      if (echo > 0) printf("\n# %s(%d)\n", __func__, n0);
+      if (echo > 0) std::printf("\n# %s(%d)\n", __func__, n0);
 
       auto a = view1D<real_t>(n0, 3.14); // test memory allocating constructor
       for(int i0 = 0; i0 < n0; ++i0) {
-          if (echo > 7) printf("# a1D(%i) = %g\n", i0, a(i0)); // test const & ()
+          if (echo > 7) std::printf("# a1D(%i) = %g\n", i0, a(i0)); // test const & ()
           a(i0) = i0 + .1; // test & ()
-          if (echo > 7) printf("# a1D(%i) = %g\n", i0, a[i0]); // test const & []
+          if (echo > 7) std::printf("# a1D(%i) = %g\n", i0, a[i0]); // test const & []
           a[i0] *= 1.1; // test & []
-          if (echo > 7) printf("# a1D(%i) = %g\n", i0, a(i0));
+          if (echo > 7) std::printf("# a1D(%i) = %g\n", i0, a(i0));
       } // test i0
 
       view1D<real_t> b; // test default constructor
@@ -800,7 +911,7 @@ namespace data_view {
       for(int i0 = 0; 2*i0 < n0; ++i0) {
           stat += (a(2*i0) != b[i0]); // test const & () and []
           b(i0) = i0 + .7;
-          if (echo > 7) printf("# a1D(%i) = %g\n", 2*i0, a(2*i0));
+          if (echo > 7) std::printf("# a1D(%i) = %g\n", 2*i0, a(2*i0));
           stat += (a[2*i0] != b(i0));
       } // test i0
 
@@ -813,7 +924,7 @@ namespace data_view {
   inline status_t test_view2D(int const echo=9) {
       status_t stat(0);
       int constexpr n1 = 5, n0 = 3;
-      if (echo > 0) printf("\n# %s(%d,%d)\n", __func__, n0, n1);
+      if (echo > 0) std::printf("\n# %s(%d,%d)\n", __func__, n0, n1);
 
       view2D<real_t> a(n1, n0, 3.14); // test memory allocating constructor
       for(int i1 = 0; i1 < n1; ++i1) {
@@ -821,7 +932,7 @@ namespace data_view {
           for(int i0 = 0; i0 < n0; ++i0) {
               real_t const v = i1 + .1*i0;
               a(i1,i0) = v;
-              if (echo > 0) printf("# a2D(%i,%i) = %g\n", i1, i0, a(i1,i0));
+              if (echo > 0) std::printf("# a2D(%i,%i) = %g\n", i1, i0, a(i1,i0));
               stat += (v != a[i1][i0]);
               stat += (v != a[i1](i0));
               stat += (v != a(i1,i0));
@@ -841,7 +952,7 @@ namespace data_view {
   inline status_t test_view3D(int const echo=9) {
       status_t stat(0);
       int constexpr n2 = 5, n1 = 3, n0 = 2;
-      if (echo > 0) printf("\n# %s(%d,%d,%d)\n", __func__, n2, n1, n0);
+      if (echo > 0) std::printf("\n# %s(%d,%d,%d)\n", __func__, n2, n1, n0);
 
       view3D<real_t> a(n2, n1, n0, 3.14); // test memory allocating constructor
       auto const a_t021 = a.transpose(); // test the default transposition a(i0,j0,i2) --> a_transposed(i0,i2,j0)
@@ -852,7 +963,7 @@ namespace data_view {
               for(int i0 = 0; i0 < n0; ++i0) {
                   real_t const v = i2 + .1*i1 + .01*i0;
                   a(i2,i1,i0) = v;
-                  if (echo > 0) printf("# a3D(%i,%i,%i) = %g\n", i2, i1, i0, a(i2,i1,i0));
+                  if (echo > 0) std::printf("# a3D(%i,%i,%i) = %g\n", i2, i1, i0, a(i2,i1,i0));
                   stat += (v != a(i2,i1,i0)); // value arrived
                   stat += (v != a_i2(i1,i0));
                   stat += (v != a_i2_i1(i0));
@@ -873,7 +984,7 @@ namespace data_view {
   inline status_t test_view4D(int const echo=9) {
       status_t stat(0);
       int constexpr n3 = 4, n2 = 5, n1 = 3, n0 = 2;
-      if (echo > 0) printf("\n# %s(%d,%d,%d,%d)\n", __func__, n3, n2, n1, n0);
+      if (echo > 0) std::printf("\n# %s(%d,%d,%d,%d)\n", __func__, n3, n2, n1, n0);
 
       view4D<real_t> a(n3, n2, n1, n0, 3.14); // test memory allocating constructor
       for(int i3 = 0; i3 < n3; ++i3) {
@@ -883,7 +994,7 @@ namespace data_view {
                   for(int i0 = 0; i0 < n0; ++i0) {
                       real_t const v = i3 + .1*i2 + .01*i1 + .001*i0;
                       a(i3,i2,i1,i0) = v;
-                      if (echo > 0) printf("# a4D(%i,%i,%i,%i) = %g\n", i3, i2, i1, i0, a(i3,i2,i1,i0));
+                      if (echo > 0) std::printf("# a4D(%i,%i,%i,%i) = %g\n", i3, i2, i1, i0, a(i3,i2,i1,i0));
                       stat += (v != a(i3,i2,i1,i0)); // value arrived
                       stat += (v != a_i3(i2,i1,i0));
                   } // i0
@@ -900,7 +1011,7 @@ namespace data_view {
   template <typename real_t=double>
   inline status_t test_view(int const echo=0) {
       status_t stat = 0;
-      if (echo > 0) printf("\n\n# %s<%s>\n\n", __func__,
+      if (echo > 0) std::printf("\n\n# %s<%s>\n\n", __func__,
             (4 == sizeof(real_t)) ? "float" : "double");
 
       stat += test_view1D<real_t>(echo);
@@ -917,7 +1028,7 @@ namespace data_view {
   inline status_t test_view2D_transpose(int const echo=9) {
       status_t stat(0);
       int constexpr n1 = 3, n0 = 5;
-      if (echo > 0) printf("\n# %s(%d,%d)\n", __func__, n1, n0);
+      if (echo > 0) std::printf("\n# %s(%d,%d)\n", __func__, n1, n0);
 
       view2D<integer_t> a(n1, n0, -3); // test memory allocating constructor
       auto const a_t01 = a.transpose(); // only the view is transposed, not the data, default_transpose
@@ -931,7 +1042,7 @@ namespace data_view {
           for(int i0 = 0; i0 < n0; ++i0) {
               integer_t const v = i1*10 + i0;
               a(i1,i0) = v;
-              if (echo > 0) printf("# a2D(%i,%i) =%3d\n", i1, i0, a(i1,i0));
+              if (echo > 0) std::printf("# a2D(%i,%i) =%3d\n", i1, i0, a(i1,i0));
               stat += (v != a(i1,i0));
               stat += (v != a_t01(i0,i1));
 
@@ -957,7 +1068,7 @@ namespace data_view {
   inline status_t test_view3D_transpose(int const echo=9) {
       status_t stat(0);
       int constexpr n2 = 2, n1 = 3, n0 = 5;
-      if (echo > 0) printf("\n# %s(%d,%d,%d)\n", __func__, n2, n1, n0);
+      if (echo > 0) std::printf("\n# %s(%d,%d,%d)\n", __func__, n2, n1, n0);
       
 //    int64_t const perm[6] = {0x012, 0x021, 0x102, 0x120, 0x201, 0x210};
 
@@ -977,7 +1088,7 @@ namespace data_view {
               for(int i0 = 0; i0 < n0; ++i0) {
                   integer_t const v = i2*100 + i1*10 + i0;
                   a(i2,i1,i0) = v;
-                  if (echo > 0) printf("# a3D(%i,%i,%i) =%4d\n", i2, i1, i0, a(i2,i1,i0));
+                  if (echo > 0) std::printf("# a3D(%i,%i,%i) =%4d\n", i2, i1, i0, a(i2,i1,i0));
                   stat += (v != a(i2,i1,i0)); // verify that the writing worked
                   stat += (v != a_t012(i0,i1,i2));
                   stat += (v != a_t021(i0,i2,i1));
@@ -1006,7 +1117,7 @@ namespace data_view {
   inline status_t test_view4D_transpose(int const echo=9) {
       status_t stat(0);
       int constexpr n3 = 4, n2 = 2, n1 = 3, n0 = 5;
-      if (echo > 0) printf("\n# %s(%d,%d,%d,%d)\n", __func__, n3, n2, n1, n0);
+      if (echo > 0) std::printf("\n# %s(%d,%d,%d,%d)\n", __func__, n3, n2, n1, n0);
 
       view4D<integer_t> a(n3, n2, n1, n0, -3); // test memory allocating constructor
 
@@ -1045,7 +1156,7 @@ namespace data_view {
                   for(int i0 = 0; i0 < n0; ++i0) {
                       integer_t const v = i3*1000 + i2*100 + i1*10 + i0;
                       a(i3,i2,i1,i0) = v;
-                      if (echo > 0) printf("# a4D(%i,%i,%i,%i) =%5d\n", i3, i2, i1, i0, a(i3,i2,i1,i0));
+                      if (echo > 0) std::printf("# a4D(%i,%i,%i,%i) =%5d\n", i3, i2, i1, i0, a(i3,i2,i1,i0));
                       stat += (v != a(i3,i2,i1,i0)); // verify that the writing worked
 
                       int const iv[4] = {i0, i1, i2, i3}; // as vector
@@ -1072,7 +1183,7 @@ namespace data_view {
   template <typename integer_t=int>
   inline status_t test_view_transpose(int const echo=0) {
       status_t stat(0);
-      if (echo > 0) printf("\n# %s\n", __func__);
+      if (echo > 0) std::printf("\n# %s\n", __func__);
 
       stat += test_view2D_transpose<integer_t>(echo);
       stat += test_view3D_transpose<integer_t>(echo);
@@ -1082,13 +1193,42 @@ namespace data_view {
       return stat;
   } // test_view_transpose
 
+  
+  template <typename integer_t=int>
+  inline status_t test_advanced_slicing(int const echo=0) {
+      status_t stat(0);
+      if (echo > 0) std::printf("\n# %s\n", __func__);
+
+      view4D<float>   a4(4,3,2,1); // allocate 24 numbers
+      auto const a1 = a4(3,2,1  ,"___:"); assert(1 == a1.Rank);
+      auto const b1 = a4(3,2,  0,"__:_"); assert(1 == b1.Rank);
+      auto const c1 = a4(3,  1,0,"_:__"); assert(1 == c1.Rank);
+      auto const d1 = a4(  2,1,0,":___"); assert(1 == d1.Rank);
+
+      auto const a2 = a4(3,2    ,"__::"); assert(2 == a2.Rank);
+      auto const b2 = a4(3,  1,  "_:_:"); assert(2 == b2.Rank);
+      auto const c2 = a4(  2,1,  ":__:"); assert(2 == c2.Rank);
+      auto const d2 = a4(3,    0,"_::_"); assert(2 == d2.Rank);
+      auto const e2 = a4(  2,  0,":_:_"); assert(2 == e2.Rank);
+      auto const f2 = a4(    1,0,"::__"); assert(2 == f2.Rank);
+
+      auto const a3 = a4(3,      "_:::"); assert(3 == a3.Rank);
+      auto const b3 = a4(  2,    ":_::"); assert(3 == b3.Rank);
+      auto const c3 = a4(    1,  "::_:"); assert(3 == c3.Rank);
+      auto const d3 = a4(      0,":::_"); assert(3 == d3.Rank);
+
+      if (0 != stat && echo > 0) std::printf("# %s: failed with %d errors!\n", __func__, int(stat));
+      return stat;
+  } // test_advanced_slicing
+  
 
   inline status_t all_tests(int const echo=0) {
       status_t stat(0);
       stat += test_view<double>(echo);
       stat += test_view<float> (echo);
       stat += test_view_transpose(echo);
-
+      stat += test_advanced_slicing(echo);
+      
       if (0 != stat && echo > 0) std::printf("# %s: failed with %d errors!\n", __func__, int(stat));
       return stat;
   } // all_tests

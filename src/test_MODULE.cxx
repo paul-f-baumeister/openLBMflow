@@ -3,6 +3,6 @@
 #include "MODULE.hxx" // ::all_tests
 int main() {
     auto const stat = MODULE::all_tests(9);
-    std::printf("\n# %s: all_tests = %i\n", __FILE__, int(stat));
+    if (0 != int(stat)) std::printf("\n# %s: all_tests = %i\n", __FILE__, int(stat));
     return int(stat);
 } // main
